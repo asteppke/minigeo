@@ -43,6 +43,6 @@ class GeometryGroup:
             # Move vertices to group-relative coordinates
             rel_vertices = geometry.vertices - group_center
             # Transform relative coordinates
-            new_vertices = transform.apply(rel_vertices) + group_center
+            new_vertices = transform.apply_to_vertices(rel_vertices) + group_center
             geometry.vertices = new_vertices
             geometry.update_geometry()

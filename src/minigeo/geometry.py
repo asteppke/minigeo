@@ -54,7 +54,15 @@ class Transform:
         """
         self.matrix = np.eye(4)
 
-    def apply(self, vertices: np.ndarray) -> np.ndarray:
+    def apply_to_vertex(self, vertex: np.ndarray) -> np.ndarray:
+        """
+        Applies the current affine transformation to a 3D vertex.
+        """
+        hom_vertex = np.hstack([vertex, 1])
+        transformed = self.matrix @ hom_vertex
+        return transformed[:3]
+
+    def apply_to_vertices(self, vertices: np.ndarray) -> np.ndarray:
         """
         Applies the current affine transformation to an array of 3D vertices.
 
@@ -221,19 +229,36 @@ class Transform:
             raise ValueError("Invalid axis. Choose from 'x', 'y', or 'z' or provide a rotation axis vector.")
         return self
 
+    def apply(self, other: BaseGeometry, inplace=True) -> BaseGeometry:
+        """
+        Applies the transform to a geometry object.
+
+        Args:
+            other (BaseGeometry): The geometry object to apply the transform to.
+
+        """
+        # TODO: Think about the inplace parameter. Should we return a copy?
+
+        if not hasattr(other, "vertices"):
+            raise TypeError("Transform can only be applied to BaseGeometry instances.")
+
+        new_vertices = self.apply_to_vertices(other.vertices)
+        other.vertices = new_vertices
+        
+        if hasattr(other, "_center"):
+            other._center = self.apply_to_vertex(other._center)
+
+        other.update_geometry()
+        
+    
     def __matmul__(self, other: "BaseGeometry") -> "BaseGeometry":
         """
         Overload the @ operator to apply the transform to a shape.
         """
-        if not hasattr(other, "vertices"):
-            raise TypeError("Transform can only be applied to BaseGeometry instances.")
 
         # TODO: Think about this interface, here we should probably return a new object.
         # But using @= as in-place operation is also strange as the transform is not modified but applied.
-        new_vertices = self.apply(other.vertices)
-        other.vertices = new_vertices
-        other.update_geometry()
-
+        self.apply(other)
 
 class BaseGeometry(ABC):
     """
@@ -253,7 +278,7 @@ class BaseGeometry(ABC):
         Rotate the geometry around the given axis.
         """
         transform = Transform().rotate(axis, angle, in_degrees)
-        self.vertices = transform.apply(self.vertices)
+        self.vertices = transform.apply_to_vertices(self.vertices)
         self.update_geometry()
 
     def update_geometry(self) -> None:
@@ -387,7 +412,7 @@ class BaseAxis(BaseGeometry):
         Apply a transformation to the axis endpoints.
         Updates the origin and the direction accordingly.
         """
-        new_vertices = transform.apply(self.vertices)
+        new_vertices = transform.apply_to_vertices(self.vertices)
         self._vertices = new_vertices
         self.origin = new_vertices[0]
         vec = new_vertices[1] - new_vertices[0]
@@ -507,7 +532,7 @@ class BaseShape(BaseGeometry):
             in_degrees (bool): If True, the angle is in degrees. If False, the angle is in radians.
         """
         transform = Transform().rotate(axis, angle, in_degrees)
-        self.vertices = transform.apply(self.vertices)
+        self.vertices = transform.apply_to_vertices(self.vertices)
         self.update_geometry()
    
     def update_geometry(self):
