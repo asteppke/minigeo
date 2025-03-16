@@ -4,7 +4,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from .geometry import BaseRectangle, BaseBox, BasePolygon, BaseLine, BaseCylinder, BaseCone
 
 class MplPoly(BasePolygon):
-    def __init__(self, ax, center, vertices, color="C1", alpha=1, draw=True):
+    def __init__(self, ax, center, vertices, color="C0", alpha=1, draw=True):
         super().__init__(center, vertices=vertices)
 
         self.ax = ax
@@ -24,7 +24,7 @@ class MplPoly(BasePolygon):
 
 
 class MplSurface(BaseRectangle):
-    def __init__(self, ax, center, vertices, color="C1", alpha=1, draw=True):
+    def __init__(self, ax, center, vertices, color="C0", alpha=1, draw=True):
         super().__init__(center, vertices=vertices)
 
         self.ax = ax
@@ -44,7 +44,7 @@ class MplSurface(BaseRectangle):
 
 
 class MplBox(BaseBox):
-    def __init__(self, ax, center, dimensions, color="C1", alpha=1, draw=True):
+    def __init__(self, ax, center, dimensions, color="C0", alpha=1, draw=True):
         super().__init__(center, dimensions)
 
         self.ax = ax
@@ -103,7 +103,7 @@ class MplCube(MplBox):
             )
 
 class MplLine(BaseLine):
-    def __init__(self, ax, start, end, color="C1", alpha=1, draw=True, arrow_tip=False):
+    def __init__(self, ax, start, end, color="C0", alpha=1, draw=True, arrow_tip=False):
         super().__init__(start, end)
 
         self.ax = ax
@@ -122,7 +122,9 @@ class MplLine(BaseLine):
             self.ax.quiver(self.start[0], self.start[1], self.start[2], self.end[0], self.end[1], self.end[2], color=self.color, arrow_length_ratio=0.2, normalize=False)
 
 class MplCylinder(BaseCylinder):
-    def __init__(self, ax, center, radius, height, color="C1", alpha=1, draw=True):
+    def __init__(self, ax, center, dimensions : tuple, color="C0", alpha=1, draw=True):
+        radius, height = dimensions
+
         super().__init__(center, (radius, height))
 
         self.ax = ax
@@ -166,19 +168,13 @@ class MplCylinder(BaseCylinder):
         )
         self.ax.add_collection3d(self.poly3)
 
-        print(self.vertices)
-        #self.ax.plot_trisurf(self.vertices[:, 0], self.vertices[:, 1], self.vertices[:, 2], color=self.color, alpha=self.alpha)
-        #self.ax.plot_poly3(self.vertices, color=self.color, alpha=self.alpha)
-        #self.ax.plot_wireframe(self.vertices[:, 0], self.vertices[:, 1], self.vertices[:, 2], color="grey", alpha=self.alpha)
-        
-
-
     def update_geometry(self):
-        self._draw()
-
+        self.poly.set_verts(self.faces)
+        self.poly2.set_verts(self.top_faces)
+        self.poly3.set_verts(self.bottom_faces)
 
 class MplCone(BaseCone, MplCylinder):
-    def __init__(self, ax, center, lower_radius, upper_radius, height, color="C1", alpha=1, draw=True):
+    def __init__(self, ax, center, lower_radius, upper_radius, height, color="C0", alpha=1, draw=True):
         BaseCone.__init__(self, center, (lower_radius, upper_radius, height))
 
         self.ax = ax
@@ -192,7 +188,7 @@ class MplCone(BaseCone, MplCylinder):
             self._draw()
 
 class Detector:
-    def __init__(self, ax, center, dimensions, color="C1", alpha=1, draw=True, pixel_pitch=0.01):
+    def __init__(self, ax, center, dimensions, color="C0", alpha=1, draw=True, pixel_pitch=0.01):
         self.ax = ax
         self.center = np.array(center)
         self.dimensions = np.array(dimensions)

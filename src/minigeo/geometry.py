@@ -1,7 +1,7 @@
 """
 Minimal 3D geometry library for visualizing 3D shapes and transformations.
 
-The library provides a set of base classes for 3D geometry objects such as points, lines, shapes, and axes 
+The library provides a set of base classes for 3D geometry objects such as points, lines, shapes, and axes
 and is independent of any specific visualization library.
 """
 
@@ -12,7 +12,9 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 
-def rotate_arbitrary_vector_matrix(rotation_axis_vector, angle: float | None = None, in_degrees=True) -> np.ndarray:
+def rotate_arbitrary_vector_matrix(
+    rotation_axis_vector, angle: float | None = None, in_degrees=True
+) -> np.ndarray:
     """Calculate the rotation matrix for an arbitrary rotation axis vector.
     The rotation matrix is calculated using the Rodrigues' rotation formula.
     Args:
@@ -226,12 +228,11 @@ class Transform:
         if not hasattr(other, "vertices"):
             raise TypeError("Transform can only be applied to BaseGeometry instances.")
 
-        # TODO: Think about this interface, here we should probably return a new object. 
+        # TODO: Think about this interface, here we should probably return a new object.
         # But using @= as in-place operation is also strange as the transform is not modified but applied.
         new_vertices = self.apply(other.vertices)
         other.vertices = new_vertices
         other.update_geometry()
-        return other
 
 
 class BaseGeometry(ABC):
@@ -427,7 +428,7 @@ class BaseShape(BaseGeometry):
 
         Args:
             position (np.array): The center (anchor) position of the shape.
-            dimensions (np.array): The dimensions of the shape, e.g. [width, length, height, ...] for basic shapes. 
+            dimensions (np.array): The dimensions of the shape, e.g. [width, length, height, ...] for basic shapes.
                                    This is interpreted differently for different shapes.
             vertices (np.array): The vertices of the shape. If None, the vertices are calculated from the dimensions.
                                  The vertices are defined in a counter-clockwise order, relative to the center position.
@@ -520,7 +521,7 @@ class BaseShape(BaseGeometry):
         for axis in np.eye(3):
             axes.append(BaseAxis(axis, self.center, label=f"{axis} axis"))
         return axes
-    
+
     def __repr__(self):
         return f"{self.__class__.__name__} at {self.center} with vertices {self.vertices}"
 
@@ -616,27 +617,28 @@ class BaseCircle(BaseShape):
         n = 16  # Number of vertices
         theta = np.linspace(0, 2 * np.pi, n)
         vertices = np.zeros((n, 3))
-        vertices[:, 0] = x + radius * np.cos(theta) 
+        vertices[:, 0] = x + radius * np.cos(theta)
         vertices[:, 1] = y + radius * np.sin(theta)
         vertices[:, 2] = z
         return vertices
 
     @property
-    def faces(self) -> np.ndarray:      
+    def faces(self) -> np.ndarray:
         return np.array(
             [
                 [self.vertices[i], self.vertices[(i + 1) % len(self.vertices)], self.center]
                 for i in range(len(self.vertices))
             ]
-        )   
-    
+        )
+
     @property
     def edges(self) -> np.ndarray:
         return np.array(
             [
-                [self.vertices[i], self.vertices[(i + 1) % len(self.vertices)]] for i in range(len(self.vertices))
+                [self.vertices[i], self.vertices[(i + 1) % len(self.vertices)]]
+                for i in range(len(self.vertices))
             ]
-        )   
+        )
 
 
 class BaseBox(BaseShape):
@@ -711,46 +713,46 @@ class BaseCylinder(BaseShape):
         # using list here because of the uneven number of faces for the different parts
         return list(self.side_faces) + list(self.top_faces) + list(self.bottom_faces)
 
-
     @property
     def side_faces(self) -> np.ndarray:
         return np.array(
             [
-                [self.vertices[i], self.vertices[(i + 1) % len(self.vertices)], # bottom edge 0->1
-                 self.vertices[(i + len(self.vertices)//2 + 1) % len(self.vertices)], # vertical edge 1->2
-                 self.vertices[(i + len(self.vertices)//2) % len(self.vertices)],  # top edge 2->3->0
+                [
+                    self.vertices[i],
+                    self.vertices[(i + 1) % len(self.vertices)],  # bottom edge 0->1
+                    self.vertices[
+                        (i + len(self.vertices) // 2 + 1) % len(self.vertices)
+                    ],  # vertical edge 1->2
+                    self.vertices[(i + len(self.vertices) // 2) % len(self.vertices)],  # top edge 2->3->0
                 ]
                 for i in range(len(self.vertices))
             ]
         )
-    
+
     @property
     def top_faces(self) -> np.ndarray:
-        return np.array(
-            [
-                [self.vertices[i] for i in range(len(self.vertices)//2)]
-            ]
-        )
-    
+        return np.array([[self.vertices[i] for i in range(len(self.vertices) // 2)]])
+
     @property
     def bottom_faces(self) -> np.ndarray:
-        return np.array(
-            [
-                [self.vertices[i] for i in range(len(self.vertices)//2, len(self.vertices))]
-            ]
-        )
+        return np.array([[self.vertices[i] for i in range(len(self.vertices) // 2, len(self.vertices))]])
 
-    
     @property
     def edges(self) -> np.ndarray:
         return np.array(
             [
-                [self.vertices[i], self.vertices[(i + 1) % len(self.vertices)]] for i in range(len(self.vertices))
+                [self.vertices[i], self.vertices[(i + 1) % len(self.vertices)]]
+                for i in range(len(self.vertices))
             ]
         )
 
     def update_geometry(self) -> None:
         pass
+
+    def __repr__(self) -> str:
+        return (
+            f"BaseCylinder at {self.center} with radius {self.dimensions[0]} and height {self.dimensions[1]}"
+        )
 
 
 class BaseCone(BaseCylinder):
@@ -768,7 +770,5 @@ class BaseCone(BaseCylinder):
         vertices_top[:, 2] = z + height
 
         vertices = np.vstack([vertices_bottom, vertices_top])
-        
-        return vertices
-    
 
+        return vertices
