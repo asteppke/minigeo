@@ -226,6 +226,8 @@ class Transform:
         if not hasattr(other, "vertices"):
             raise TypeError("Transform can only be applied to BaseGeometry instances.")
 
+        # TODO: Think about this interface, here we should probably return a new object. 
+        # But using @= as in-place operation is also strange as the transform is not modified but applied.
         new_vertices = self.apply(other.vertices)
         other.vertices = new_vertices
         other.update_geometry()
