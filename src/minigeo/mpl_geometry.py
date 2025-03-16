@@ -115,11 +115,14 @@ class MplLine(BaseLine):
             self._draw()
 
     def _draw(self) -> None:
-        self.ax.plot([self.start[0], self.end[0]], [self.start[1], self.end[1]], [self.start[2], self.end[2]], color=self.color, alpha=self.alpha)
+        self.line, = self.ax.plot([self.start[0], self.end[0]], [self.start[1], self.end[1]], [self.start[2], self.end[2]], color=self.color, alpha=self.alpha)
 
         # Draw arrow tip if specified
         if self.arrow_tip:
             self.ax.quiver(self.start[0], self.start[1], self.start[2], self.end[0], self.end[1], self.end[2], color=self.color, arrow_length_ratio=0.2, normalize=False)
+    
+    def update_geometry(self):
+        self.line.set_data_3d([self.start[0], self.end[0]], [self.start[1], self.end[1]], [self.start[2], self.end[2]])
 
 class MplCylinder(BaseCylinder):
     def __init__(self, ax, center, dimensions : tuple, color="C0", alpha=1, draw=True):

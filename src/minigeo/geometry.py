@@ -434,9 +434,10 @@ class BaseShape(BaseGeometry):
                                  The vertices are defined in a counter-clockwise order, relative to the center position.
             anchor (str): The anchor point of the shape. Default is 'center', other options depend on the shape, e.g.
                           'bottom_corner', 'top_corner', 'front_face_center'.
-            TODO: make anchor and shift work correctly.
         """
-
+        # TODO: make anchor and shift work correctly.
+        # TODO: think about a good way for the dimensions parameter. Either different keywords for different shapes
+        # or a general approach where the dimensions are interpreted differently for different shapes.
         self.anchor = anchor
         self._center = position
         self.dimensions = np.array(dimensions)
@@ -508,8 +509,7 @@ class BaseShape(BaseGeometry):
         transform = Transform().rotate(axis, angle, in_degrees)
         self.vertices = transform.apply(self.vertices)
         self.update_geometry()
-
-    @abstractmethod
+   
     def update_geometry(self):
         pass
 
@@ -639,7 +639,11 @@ class BaseCircle(BaseShape):
                 for i in range(len(self.vertices))
             ]
         )
-
+    
+    def __repr__(self) -> str:
+        return (
+            f"BaseCircle at {self.center} with radius {self.dimensions[0]}"
+        )    
 
 class BaseBox(BaseShape):
     def calc_initial_vertices(self, vertices=None) -> np.ndarray:
