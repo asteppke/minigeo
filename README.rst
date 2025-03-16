@@ -34,16 +34,7 @@ minigeo
 =======
 
 
-    Add a short description here!
+A minimal 3D geometry library for Python. The focus lies on simple interactive usage and compatibility with different visualization libraries or backends.
 
 
-A longer description of your project goes here...
 
-
-.. _pyscaffold-notes:
-
-Note
-====
-
-This project has been set up using PyScaffold 4.6. For details and usage
-information on PyScaffold see https://pyscaffold.org/.
