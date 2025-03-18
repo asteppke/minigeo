@@ -30,7 +30,30 @@ class GeometryGroup:
         centers = np.array([g.center for g in self.geometries])
         return np.mean(centers, axis=0)
     
-    def apply_transform(self, transform: Transform) -> None:
+    @property
+    def vertices(self) -> np.ndarray:
+        """Return the vertices of the geometry."""
+        return np.concatenate([g.vertices for g in self.geometries])
+
+    @vertices.setter
+    def vertices(self, value: np.ndarray):
+        """Set the vertices of the geometry."""
+        # TODO: This is not very elegant because we need to reassign the vertices to each geometry
+        # but allows to use a flat array of vertices.
+        start = 0
+        for geometry in self.geometries:
+            end = start + len(geometry.vertices)
+            geometry.vertices = value[start:end]
+            geometry.update_geometry()
+            start = end
+
+
+    def update_geometry(self) -> None:
+        """Update the geometry of the group."""
+        for geometry in self.geometries:
+            geometry.update_geometry()
+
+    def deprecate_apply_transform(self, transform: Transform) -> None:
         """
         Apply a given Transform to all geometries in the group relative to the group's center.
         This ensures that their relative positioning is preserved.
