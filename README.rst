@@ -26,9 +26,6 @@
 .. image:: https://img.shields.io/badge/-PyScaffold-005CA0?logo=pyscaffold
     :alt: Project generated with PyScaffold
     :target: https://pyscaffold.org/
-
-|
-
 =======
 minigeo
 =======
@@ -39,36 +36,28 @@ A minimal 3D geometry library for Python. The focus lies on simple interactive u
 
 Examples
 --------
+.. code-block::
+   :caption: A cool example
 
-````python
-import minigeo.geometry as geo
-
-# Create a box at the origin with dimensions 1x2x3
-box = geo.BaseBox([0, 0, 0], dimensions=[1, 2, 3])
-
-# Define a translation along the x-axis by 1
-move_x = geo.Transform().translate([1, 0, 0])
-
-# and apply it to the box
-move_x @ box
-
-print(box)
-
-BaseBox at [1. 0. 0.] with vertices [[ 0.5 -1.  -1.5]
- [ 1.5 -1.  -1.5]
- [ 1.5  1.  -1.5]
- [ 0.5  1.  -1.5]
- [ 0.5 -1.   1.5]
- [ 1.5 -1.   1.5]
- [ 1.5  1.   1.5]
- [ 0.5  1.   1.5]]
-````
-
-
-
-
-
-
-
-
+   import minigeo.geometry as geo
+   
+   # Create a box at the origin with dimensions 1x2x3
+   box = geo.BaseBox([0, 0, 0], dimensions=[1, 2, 3])
+   
+   # Define a translation along the x-axis by 1
+   move_x = geo.Transform().translate([1, 0, 0])
+   
+   # and apply it to the box
+   move_x @ box
+   
+   print(box)
+   
+   BaseBox at [1. 0. 0.] with vertices [[ 0.5 -1.  -1.5]
+    [ 1.5 -1.  -1.5]
+    [ 1.5  1.  -1.5]
+    [ 0.5  1.  -1.5]
+    [ 0.5 -1.   1.5]
+    [ 1.5 -1.   1.5]
+    [ 1.5  1.   1.5]
+    [ 0.5  1.   1.5]]
 
