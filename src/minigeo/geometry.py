@@ -7,7 +7,7 @@ and is independent of any specific visualization library.
 
 from __future__ import annotations
 import sys
-from typing import Optional
+from typing import Optional, List
 from abc import ABC, abstractmethod
 import numpy as np
 
@@ -441,7 +441,7 @@ class BaseAxis(BaseGeometry):
 class BaseShape(BaseGeometry):
     def __init__(
         self,
-        position: np.ndarray,
+        position: np.ndarray | List,
         dimensions: np.ndarray | None = None,
         vertices: np.ndarray | None = None,
         anchor: str = "center",
@@ -464,28 +464,28 @@ class BaseShape(BaseGeometry):
         # TODO: think about a good way for the dimensions parameter. Either different keywords for different shapes
         # or a general approach where the dimensions are interpreted differently for different shapes.
         self.anchor = anchor
-        self._center = position
+        self._center = np.array(position)
         self.dimensions = np.array(dimensions)
         self.rotation_matrix = np.eye(4)
         self._vertices = self.calc_initial_vertices(vertices) if vertices is None else vertices
         self._vertices = self._interpret_position(self._vertices, self.dimensions, self.anchor)
         self.axes = self.generate_axes() if enable_axes else None
 
-    def _interpret_position(self, pos: np.ndarray, dims: np.ndarray, anchor: str) -> np.ndarray:
+    def _interpret_position(self, vertices: np.ndarray, dims: np.ndarray, anchor: str) -> np.ndarray:
         """
         Adjusts the given position according to the provided anchor type.
         """
         if anchor == "center":
-            return pos
+            return vertices + self._center
         elif anchor == "bottom_corner":
             # pos is the bottom (min) corner; center is half the extents away.
-            return pos + dims / 2
+            return vertices + dims / 2
         elif anchor == "top_corner":
             # pos is the top (max) corner.
-            return pos - dims / 2
+            return vertices - dims / 2
         elif anchor == "front_face_center":
             # Assume "front" along the negative y-axis.
-            return pos + np.array([0, dims[1] / 2, 0])
+            return vertices + np.array([0, dims[1] / 2, 0])
 
         raise ValueError(f"Unrecognized anchor type: {anchor}")
 
@@ -495,6 +495,7 @@ class BaseShape(BaseGeometry):
 
     @center.setter
     def center(self, value):
+        # TODO: When the center changes we need to update the vertices.
         self._center = value
 
     @abstractmethod
