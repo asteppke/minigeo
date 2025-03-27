@@ -1,7 +1,18 @@
+from typing import Protocol, List
 import numpy as np
-from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from .geometry import BaseRectangle, BaseBox, BasePolygon, BaseLine, BaseCylinder, BaseCone
+from .groups import GeometryGroup
+
+
+class MplDrawable(Protocol):
+    """
+    Protocol for drawable objects using Matplotlib.
+    """
+    def _draw(self) -> None:
+        ...
+
+
 
 class MplPoly(BasePolygon):
     def __init__(self, ax, center, vertices, color="C0", alpha=1, draw=True):
@@ -189,6 +200,28 @@ class MplCone(BaseCone, MplCylinder):
 
         if draw:
             self._draw()
+
+
+class MplGroup(GeometryGroup):
+    def __init__(self, ax, geometries : List[MplDrawable]=None, draw=True):
+        """
+        Groups Mpl geometries together and keeps their relative positions.
+
+        """
+    
+        super().__init__(geometries)
+        # TODO: think if we need to keep a reference to the ax
+        # this is at the moment only to have a similar interface
+        self.ax = ax
+        if draw:
+            self._draw()
+
+    def _draw(self):
+        # Call each geometry’s draw method
+        for geom in self.geometries:
+            if hasattr(geom, '_draw'):
+                geom._draw()
+
 
 class Detector:
     def __init__(self, ax, center, dimensions, color="C0", alpha=1, draw=True, pixel_pitch=0.01):
