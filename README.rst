@@ -26,6 +26,12 @@
 .. image:: https://img.shields.io/badge/-PyScaffold-005CA0?logo=pyscaffold
     :alt: Project generated with PyScaffold
     :target: https://pyscaffold.org/
+
+.. image:: ttps://github.com/asteppke/minigeo/actions/workflows/python-app.yml/badge.svg
+   :alt: pytest
+   :target: https://github.com/asteppke/minigeo/actions/workflows/python-app.yml
+
+
 =======
 minigeo
 =======
