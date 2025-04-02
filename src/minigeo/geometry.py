@@ -468,7 +468,7 @@ class BaseShape(BaseGeometry):
         self.dimensions = np.array(dimensions)
         self.rotation_matrix = np.eye(4)
         self._vertices = self.calc_initial_vertices(vertices) if vertices is None else vertices
-        self._vertices = self._interpret_position(self._vertices, self.dimensions, self.anchor)
+        # self._vertices = self._interpret_position(self._vertices, self.dimensions, self.anchor)
         self.axes = self.generate_axes() if enable_axes else None
 
     def _interpret_position(self, vertices: np.ndarray, dims: np.ndarray, anchor: str) -> np.ndarray:
