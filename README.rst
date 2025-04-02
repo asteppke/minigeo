@@ -74,9 +74,20 @@ Installation
 ------------
 To install the `minigeo` library, clone the repository and run the following command in the project directory:
 
-```bash
-pip install .
-```
+.. code-block:: bash
+
+    pip install .
+
+
+
+How does it look?
+------------
+The obligatory screenshot:
+
+.. image:: examples/minigeo.png
+   :alt: Example Image
+   :width: 600px
+
 
 Contributing
 -------------
