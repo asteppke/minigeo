@@ -31,13 +31,21 @@ minigeo
 =======
 
 
-A minimal 3D geometry library for Python. The focus lies on simple interactive usage and compatibility with different visualization libraries or backends.
+A minimalistic 3D geometry library designed for visualizing 3D shapes and transformations using Python. The focus lies on simple interactive usage and compatibility with different visualization libraries or backends. 
+It provides a set of base classes for 3D geometry objects, such as points, lines, shapes, and axes, and is independent of any specific visualization library.
 
+Features
+--------
+- **3D Geometry Classes**: Base classes for various geometric shapes.
+- **Transformations**: Support for affine transformations in 3D space.
+- **Grouping**: Ability to group multiple geometries and manipulate them collectively.
+- **Matplotlib Integration**: Classes for rendering geometries using Matplotlib.
 
 Examples
 --------
 .. code-block::
-   :caption: A cool example
+   :caption: Example of creating a box and applying a translation
+   :name: example-1
 
    import minigeo.geometry as geo
    
@@ -61,3 +69,15 @@ Examples
     [ 1.5  1.   1.5]
     [ 0.5  1.   1.5]]
 
+
+Installation
+------------
+To install the `minigeo` library, clone the repository and run the following command in the project directory:
+
+```bash
+pip install .
+```
+
+Contributing
+-------------
+Contributions are welcome! Please feel free to submit a pull request or open an issue for any enhancements or bug fixes.
