@@ -641,7 +641,7 @@ class BaseCircle(BaseShape):
         x, y, z = self.center
         radius = self.dimensions[0]
         n = 16  # Number of vertices
-        theta = np.linspace(0, 2 * np.pi, n)
+        theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
         vertices = np.zeros((n, 3))
         vertices[:, 0] = x + radius * np.cos(theta)
         vertices[:, 1] = y + radius * np.sin(theta)
