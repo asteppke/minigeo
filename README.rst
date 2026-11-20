@@ -83,6 +83,31 @@ from their bounding box along the world axes:
    lamp.place("bottom", at=table.anchor("top back right"))
 
 
+Drawing with a scene
+--------------------
+Geometry does not know how it is drawn. A ``Scene`` collects geometries together with
+their ``Style`` and hands them to a backend (matplotlib for now; SVG and plotly are planned):
+
+.. code-block::
+
+   from minigeo import Scene, Style
+   import minigeo.geometry as geo
+
+   wood = Style(fill="peru", stroke="saddlebrown")
+
+   scene = Scene()
+   table = scene.add(geo.BaseBox([0, 0, 1], dimensions=[2, 1, 0.1], anchor="bottom"), wood)
+   cup = scene.add(geo.BaseCylinder(table.anchor("top"), dimensions=[0.1, 0.2]), fill="C0",
+                   label="cup", label_at="top")
+
+   scene.render()                    # matplotlib 3D axes
+   scene.render(show_axes=False)     # a clean, TikZ-like drawing
+
+In Jupyter, a scene on the last line of a cell shows itself as an image. Styles combine
+with ``|`` (``wood | Style(opacity=0.5)``), and the scene keeps references to its
+geometries, so moving a shape after adding it shows in the next rendering. See
+``examples/table_scene.py`` for a complete scene.
+
 Installation
 ------------
 Clone the repository and install it with the matplotlib backend:

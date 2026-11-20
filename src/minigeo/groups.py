@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from .geometry import BaseGeometry, Transform, point_in_bounding_box, resolve_pivot
+from .anchors import point_in_bounding_box, resolve_pivot
+from .geometry import BaseGeometry
+from .transform import Transform
 
 
 class GeometryGroup:
