@@ -534,6 +534,7 @@ class BaseShape(BaseGeometry):
         """
         transform = Transform().rotate(axis, angle, in_degrees)
         self.vertices = transform.apply_to_vertices(self.vertices)
+        self._center = transform.apply_to_vertices(self.center)
         self.update_geometry()
    
     def update_geometry(self):
@@ -729,7 +730,7 @@ class BaseCylinder(BaseShape):
         x, y, z = self.center
         radius, height = self.dimensions
         n = 16  # Number of vertices
-        theta = np.linspace(0, 2 * np.pi, n)
+        theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
         vertices = np.zeros((n, 3))
         vertices[:, 0] = x + radius * np.cos(theta)
         vertices[:, 1] = y + radius * np.sin(theta)
@@ -744,20 +745,11 @@ class BaseCylinder(BaseShape):
         return list(self.side_faces) + list(self.top_faces) + list(self.bottom_faces)
 
     @property
-    def side_faces(self) -> np.ndarray:
-        return np.array(
-            [
-                [
-                    self.vertices[i],
-                    self.vertices[(i + 1) % len(self.vertices)],  # bottom edge 0->1
-                    self.vertices[
-                        (i + len(self.vertices) // 2 + 1) % len(self.vertices)
-                    ],  # vertical edge 1->2
-                    self.vertices[(i + len(self.vertices) // 2) % len(self.vertices)],  # top edge 2->3->0
-                ]
-                for i in range(len(self.vertices))
-            ]
-        )
+    def side_faces(self):
+        n = len(self.vertices) // 2
+        v = self.vertices
+        return np.array([[v[i], v[(i + 1) % n], v[n + (i + 1) % n], v[n + i]]
+                        for i in range(n)])
 
     @property
     def top_faces(self) -> np.ndarray:
