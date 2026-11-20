@@ -40,4 +40,7 @@ class DrawingProperty:
             raise TypeError("Unsupported type for | operator")
 
     def __repr__(self):
-        return f"DrawingProperty(color={self.color}, alpha={self.alpha}, linewidth={self.linewidth})"
+        return (
+            f"DrawingProperty(fillcolor={self.fillcolor!r}, edgecolor={self.edgecolor!r}, "
+            f"alpha={self.alpha}, linewidth={self.linewidth}, linestyle={self.linestyle!r})"
+        )

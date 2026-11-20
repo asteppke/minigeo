@@ -210,7 +210,7 @@ class MplCylinder(BaseCylinder):
         self.ax.add_collection3d(self.poly3)
 
     def update_geometry(self):
-        self.poly.set_verts(self.faces)
+        self.poly.set_verts(self.side_faces)
         self.poly2.set_verts(self.top_faces)
         self.poly3.set_verts(self.bottom_faces)
 
@@ -231,10 +231,13 @@ class MplCone(BaseCone, MplCylinder):
 
 
 class MplGroup(GeometryGroup):
-    def __init__(self, ax, geometries: list[MplDrawable] = None, draw=True):
+    def __init__(self, ax, geometries: list[MplDrawable] | None = None, draw: bool = False):
         """
         Groups Mpl geometries together and keeps their relative positions.
 
+        Members are usually drawn already when they are created, so the group does not
+        draw them again by default (that would create duplicate, stale artists).
+        Pass ``draw=True`` only if the members were created with ``draw=False``.
         """
 
         super().__init__(geometries)
@@ -249,52 +252,3 @@ class MplGroup(GeometryGroup):
         for geom in self.geometries:
             if hasattr(geom, "_draw"):
                 geom._draw()
-
-
-class Detector:
-    def __init__(self, ax, center, dimensions, color="C0", alpha=1, draw=True, pixel_pitch=0.01):
-        self.ax = ax
-        self.center = np.array(center)
-        self.dimensions = np.array(dimensions)
-        self.pixel_pitch = pixel_pitch
-        self.color = color
-        self.alpha = alpha
-        self.rotation_matrix = np.eye(3)
-        self.vertices = self._calculate_vertices()
-        self.faces = self._calculate_faces()
-        if draw:
-            self._draw()
-
-        # calc pixel centers
-        self.pixel_centers = self._calculate_pixel_centers()
-
-    def _calc_basis_vectors(self):
-        x_basis = np.array([1, 0, 0])
-        y_basis = np.array([0, 1, 0])
-        z_basis = np.array([0, 0, 1])
-        return x_basis, y_basis, z_basis
-
-    def _calculate_pixel_centers(self):
-        num_pixels_x = int(self.dimensions[0] / self.pixel_pitch)
-        num_pixels_y = int(self.dimensions[1] / self.pixel_pitch)
-        pixel_centers = []
-        for i in range(num_pixels_x):
-            for j in range(num_pixels_y):
-                x = i * self.pixel_pitch - self.dimensions[0] / 2
-                y = j * self.pixel_pitch - self.dimensions[1] / 2
-                z = self.center[2]
-                pixel_centers.append([x, y, z])
-        return np.array(pixel_centers)
-
-    def rotate(self, axis: str, angle: float, in_degrees: bool = True, around_origin: bool = False):
-        """
-        Rotate the detector around a specified axis.
-
-        Args:
-            axis (str): The axis to rotate around ('x', 'y', 'z').
-            angle (float): The rotation angle.
-            in_degrees (bool): If True, the angle is in degrees. If False, the angle is in radians.
-            around_origin (bool): If True, rotate around the origin. If False, rotate around the center of the detector.
-        """
-        self.transform.rotate(axis, angle, in_degrees)
-        self.apply_rotation(self.transform.matrix, around_origin)
