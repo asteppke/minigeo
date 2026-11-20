@@ -46,6 +46,8 @@ class Point(Geometry):
 
 
 class Line(Geometry):
+    label_anchor = "midway"
+
     def __init__(
         self,
         start: np.ndarray,
@@ -155,3 +157,114 @@ class Axis(Geometry):
 
     def __repr__(self):
         return f"{self.__class__.__name__} at {self.origin} with direction {self.direction}"
+
+
+def _components(value) -> np.ndarray:
+    """The components of a Vector, or of anything array-like with three numbers."""
+    if isinstance(value, Vector):
+        return value.components
+    components = np.asarray(value, dtype=float)
+    if components.shape != (3,):
+        raise ValueError(f"A vector needs three components, got {value!r}.")
+    return components
+
+
+class Vector(Line):
+    """
+    A vector: an arrow from ``origin`` with the given ``components``.
+
+    Besides drawing, vectors do vector algebra. The results of ``+``, ``-``, scaling,
+    :meth:`cross` and :meth:`projected_onto` start at this vector's origin, so they can be
+    drawn right away. Transforms move both ends, like for a :class:`Line`.
+
+    Example:
+        >>> a = Vector([1, 0, 0])
+        >>> b = Vector([0, 1, 0])
+        >>> a.cross(b).components
+        array([0., 0., 1.])
+        >>> a.angle_to(b)
+        90.0
+    """
+
+    #: Labels go at the arrow tip unless another anchor is given.
+    label_anchor = "end"
+
+    def __init__(self, components, origin=None):
+        """
+        Args:
+            components (array-like): The three components.
+            origin (array-like, optional): Where the arrow starts; default the origin.
+        """
+        origin = np.zeros(3) if origin is None else np.asarray(origin, dtype=float)
+        super().__init__(origin, origin + _components(components))
+
+    @classmethod
+    def between(cls, start, end) -> Vector:
+        """The vector from point ``start`` to point ``end``."""
+        start = np.asarray(start, dtype=float)
+        return cls(np.asarray(end, dtype=float) - start, origin=start)
+
+    @property
+    def origin(self) -> np.ndarray:
+        return np.asarray(self.start, dtype=float)
+
+    @property
+    def components(self) -> np.ndarray:
+        return np.asarray(self.end, dtype=float) - self.origin
+
+    @property
+    def length(self) -> float:
+        return float(np.linalg.norm(self.components))
+
+    @property
+    def direction(self) -> np.ndarray:
+        """The unit vector in the same direction (zero for a zero vector)."""
+        length = self.length
+        return self.components / length if length else self.components
+
+    # ------------------------------------------------------------ algebra
+
+    def dot(self, other) -> float:
+        """The dot product with another vector (or three numbers)."""
+        return float(np.dot(self.components, _components(other)))
+
+    def cross(self, other) -> Vector:
+        """The cross product, starting at this vector's origin."""
+        return Vector(np.cross(self.components, _components(other)), origin=self.origin)
+
+    def angle_to(self, other, in_degrees: bool = True) -> float:
+        """The angle between the two directions, from 0 to 180 degrees (or 0 to pi)."""
+        a, b = self.components, _components(other)
+        lengths = np.linalg.norm(a) * np.linalg.norm(b)
+        if lengths == 0:
+            raise ValueError("A zero vector has no direction.")
+        angle = float(np.arccos(np.clip(np.dot(a, b) / lengths, -1, 1)))
+        return float(np.degrees(angle)) if in_degrees else angle
+
+    def projected_onto(self, other) -> Vector:
+        """The part of this vector along ``other``, starting at this vector's origin."""
+        direction = _components(other)
+        squared = float(np.dot(direction, direction))
+        if squared == 0:
+            raise ValueError("Cannot project onto a zero vector.")
+        return Vector(np.dot(self.components, direction) / squared * direction, origin=self.origin)
+
+    def __add__(self, other) -> Vector:
+        return Vector(self.components + _components(other), origin=self.origin)
+
+    def __sub__(self, other) -> Vector:
+        return Vector(self.components - _components(other), origin=self.origin)
+
+    def __mul__(self, factor: float) -> Vector:
+        return Vector(self.components * float(factor), origin=self.origin)
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, divisor: float) -> Vector:
+        return Vector(self.components / float(divisor), origin=self.origin)
+
+    def __neg__(self) -> Vector:
+        return Vector(-self.components, origin=self.origin)
+
+    def __repr__(self) -> str:
+        return f"Vector {self.components} at {self.origin}"

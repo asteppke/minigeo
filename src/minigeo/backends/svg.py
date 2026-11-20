@@ -226,12 +226,14 @@ class _Painter:
     def label(self, label: Label) -> None:
         style = label.style
         ((x, y),) = self.canvas.pixels(label.position[np.newaxis])
+        centered = label.align == "center"
         self.elements.append(
             svg.Text(
                 x=x,
                 y=y,
-                dx=3,
-                dy=-3,
+                dx=0 if centered else 3,
+                dy=round(0.35 * style.font_size, 2) if centered else -3,  # vertically centered
+                text_anchor="middle" if centered else None,
                 text=html.escape(label.text),  # svg.py writes text as it is
                 fill=color_value(style.text_color),
                 font_size=style.font_size,

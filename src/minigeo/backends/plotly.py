@@ -298,7 +298,7 @@ def label_trace(label: Label) -> go.Scatter3d:
         x=[x], y=[y], z=[z],
         mode="text",
         text=[label.text],
-        textposition="top right",
+        textposition="middle center" if label.align == "center" else "top right",
         textfont={"color": color_value(style.text_color), "size": style.font_size},
         hoverinfo="skip",
     )  # fmt: skip

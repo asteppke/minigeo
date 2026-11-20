@@ -13,7 +13,7 @@ from functools import singledispatch
 
 import numpy as np
 
-from .geometry import Axis, Geometry, Line, Point, Shape
+from .geometry import Angle, Axis, Dimension, Geometry, Line, Plane, Point, Shape, Vector
 from .groups import Group
 from .style import Style
 
@@ -66,11 +66,17 @@ class Marker:
 
 @dataclass(frozen=True, eq=False)  # holds arrays, so no automatic ==
 class Label:
-    """A text at ``position``, in ``style.text_color`` and ``style.font_size``."""
+    """
+    A text at ``position``, in ``style.text_color`` and ``style.font_size``.
+
+    ``align="left"`` puts the text to the upper right of the point (for labels next to
+    things); ``"center"`` centers it on the point (e.g. for dimension texts).
+    """
 
     position: np.ndarray
     text: str
     style: Style
+    align: str = "left"
 
 
 Primitive = Face | Path | Marker | Label
@@ -113,14 +119,46 @@ def _(point: Point, style: Style) -> list[Primitive]:
 
 
 @to_primitives.register
+def _(angle: Angle, style: Style) -> list[Primitive]:
+    primitives: list[Primitive] = []
+    if style.fill != "none":  # a shaded sector
+        sector = np.vstack([angle.vertex[np.newaxis], angle.arc_points])
+        primitives.append(Face(sector, style))
+    points = angle.right_angle_points if angle.shows_square else angle.arc_points
+    primitives.append(Path(points, style.with_(arrow=False), on_top=True))
+    return primitives
+
+
+@to_primitives.register
+def _(dimension: Dimension, style: Style) -> list[Primitive]:
+    line = style.with_(arrow=False)
+    primitives: list[Primitive] = [Path(points, line, on_top=True) for points in dimension.extension_lines]
+    a, b = dimension.line_points
+    middle = (a + b) / 2
+    arrow = style.with_(arrow=True)
+    primitives += [
+        Path(np.array([middle, a]), arrow, on_top=True),
+        Path(np.array([middle, b]), arrow, on_top=True),
+    ]
+    primitives.append(Label(dimension.anchor("label"), dimension.text, style, align="center"))
+    return primitives
+
+
+@to_primitives.register
 def _(group: Group, style: Style) -> list[Primitive]:
     return [primitive for member in group.geometries for primitive in to_primitives(member, style)]
 
 
 def type_style(geometry: Geometry | Group) -> Style:
     """Defaults that depend on the kind of geometry, e.g. axes are drawn as arrows."""
-    if isinstance(geometry, Axis):
+    if isinstance(geometry, Axis | Vector):
         return Style(arrow=True)
+    if isinstance(geometry, Plane):
+        return Style(opacity=0.4)
+    if isinstance(geometry, Angle):
+        return Style(fill="none", stroke="black")
+    if isinstance(geometry, Dimension):
+        return Style(stroke="black", line_width=0.8)
     return Style()
 
 

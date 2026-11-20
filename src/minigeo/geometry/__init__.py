@@ -18,27 +18,33 @@ from ..anchors import (
     resolve_pivot,
 )
 from ..transform import Transform, rotate_arbitrary_vector_matrix, split_rotation
+from .annotations import Angle, Dimension
 from .base import Geometry
-from .primitives import Axis, Line, Point
+from .plane import Plane
+from .primitives import Axis, Line, Point, Vector
 from .shape import Shape, face_normal, ring
 from .shapes import Box, Circle, Cone, Cylinder, Polygon, Rectangle, Sphere
 
 __all__ = [
     "ANCHOR_WORDS",
     "LINE_POSITIONS",
+    "Angle",
     "Axis",
     "Box",
     "Circle",
     "Cone",
     "Cylinder",
+    "Dimension",
     "Geometry",
     "Line",
+    "Plane",
     "Point",
     "Polygon",
     "Rectangle",
     "Shape",
     "Sphere",
     "Transform",
+    "Vector",
     "anchor_direction",
     "face_normal",
     "line_position",

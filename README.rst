@@ -20,6 +20,8 @@ Features
 --------
 - **Geometry**: ``Point``, ``Line``, ``Axis``, ``Polygon``, ``Rectangle``, ``Circle``, ``Box``,
   ``Cylinder``, ``Cone`` and ``Sphere``, with named sizes: ``Cylinder(position, radius=0.5, height=2)``.
+- **Measuring**: ``Vector`` (with dot and cross products), ``Plane`` (distances, projections,
+  intersections), ``Angle`` arcs and ``Dimension`` lines, as in technical drawings.
 - **Transforms**: translation, rotation (about any axis and any point), scaling and shear as
   composable 4x4 matrices: ``t @ shape``, ``t1 @ t2``.
 - **Own axes**: every shape has a pose with its own perpendicular axes x', y', z' that turn
@@ -84,6 +86,27 @@ Anchor words refer to a shape's own axes: left/right (x'), front/back (y'), bott
 After rotating a shape, ``shape.anchor("top")`` is still the middle of its own top face.
 Lines use TikZ's positions (``"start"``, ``"near start"``, ``"midway"``, ``"near end"``,
 ``"end"``, or a number), and groups (``Group``) have anchors on their bounding box.
+
+Vectors, planes, angles and dimensions
+--------------------------------------
+.. code-block::
+
+   from minigeo import Angle, Dimension, Plane, Vector
+
+   a, b = Vector([2, 0, 0]), Vector([1, 1, 0])
+   a.dot(b), a.angle_to(b)                    # 2.0, 45.0
+   n = a.cross(b)                             # a Vector, starting where a starts
+
+   ground = Plane([0, 0, 0], normal=[0, 0, 1])
+   ground.distance_to([1, 2, 3]), ground.project([1, 2, 3])
+   ground.intersect(Vector([0, 0, -1], origin=[1, 1, 2]))
+
+   scene.add(a, label="a")                    # vectors are arrows; labels go to the tip
+   scene.add(Angle.between(a, b), label="θ")  # an arc; a right angle gets a square
+   scene.add(Dimension(box.anchor("bottom front left"), box.anchor("bottom front right"),
+                       offset=[0, -0.3, 0], unit=" m"))
+
+Angles and dimension lines are drawn on top of solids, like labels, so that they stay readable.
 
 Styles
 ------

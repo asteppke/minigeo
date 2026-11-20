@@ -318,9 +318,15 @@ def draw_marker(ax, marker: Marker) -> list:
 
 def draw_label(ax, label: Label) -> list:
     style = label.style
-    return [
-        ax.text(*label.position, label.text, color=color_value(style.text_color), fontsize=style.font_size)
-    ]
+    placement = {"ha": "center", "va": "center"} if label.align == "center" else {}
+    text = ax.text(
+        *label.position,
+        label.text,
+        color=color_value(style.text_color),
+        fontsize=style.font_size,
+        **placement,
+    )
+    return [text]
 
 
 # ---------------------------------------------------------------- view

@@ -10,7 +10,23 @@ Example:
 
 from importlib.metadata import PackageNotFoundError, version
 
-from .geometry import Axis, Box, Circle, Cone, Cylinder, Line, Point, Polygon, Rectangle, Sphere, Transform
+from .geometry import (
+    Angle,
+    Axis,
+    Box,
+    Circle,
+    Cone,
+    Cylinder,
+    Dimension,
+    Line,
+    Plane,
+    Point,
+    Polygon,
+    Rectangle,
+    Sphere,
+    Transform,
+    Vector,
+)
 from .groups import Group
 from .scene import Scene
 from .style import Style
@@ -21,13 +37,16 @@ except PackageNotFoundError:  # pragma: no cover - package not installed
     __version__ = "unknown"
 
 __all__ = [
+    "Angle",
     "Axis",
     "Box",
     "Circle",
     "Cone",
     "Cylinder",
+    "Dimension",
     "Group",
     "Line",
+    "Plane",
     "Point",
     "Polygon",
     "Rectangle",
@@ -35,5 +54,6 @@ __all__ = [
     "Sphere",
     "Style",
     "Transform",
+    "Vector",
     "__version__",
 ]

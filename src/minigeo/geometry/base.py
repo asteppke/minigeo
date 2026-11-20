@@ -16,6 +16,12 @@ class Geometry(ABC):
     Base class for all geometry classes.
     Every geometry contains vertices (np.ndarrray) as underlying properties."""
 
+    #: Where labels go when ``Scene.add(..., label=...)`` gets no ``label_at``.
+    label_anchor = "center"
+
+    #: How labels sit at their anchor: ``"left"`` (to the upper right of it) or ``"center"``.
+    label_align = "left"
+
     @property
     @abstractmethod
     def vertices(self) -> np.ndarray:

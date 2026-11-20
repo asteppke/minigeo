@@ -117,7 +117,7 @@ class Scene:
         style: Style | None = None,
         *,
         label: str | None = None,
-        label_at: str | float | np.ndarray = "center",
+        label_at: str | float | np.ndarray | None = None,
         face_styles: dict[FaceKey, Style] | None = None,
         frame: bool = False,
         **style_fields,
@@ -129,7 +129,8 @@ class Scene:
             geometry: A shape, line, point, axis or group.
             style: A :class:`Style` for this geometry.
             label: Text to show next to the geometry.
-            label_at: The anchor where the label goes, e.g. ``"top"`` or ``"near end"``.
+            label_at: The anchor where the label goes, e.g. ``"top"`` or ``"near end"``. Default:
+                the center of shapes, the middle of lines, the tip of vectors, outside an angle's arc.
             face_styles: Styles for single faces of a shape, by index or by name
                 (for boxes: bottom, top, front, back, left, right).
             frame: Also draw the shape's own axes x', y', z' (see :meth:`add_frame`).
@@ -145,7 +146,8 @@ class Scene:
             _check_face_keys(geometry, face_styles)
         self.items.append(SceneItem(geometry, item_style, dict(face_styles or {})))
         if label is not None:
-            self.labels.append(SceneLabel(geometry, label, label_at, item_style))
+            at = label_at if label_at is not None else getattr(geometry, "label_anchor", "center")
+            self.labels.append(SceneLabel(geometry, label, at, item_style))
         if frame:
             self.add_frame(geometry)
         return geometry
@@ -225,7 +227,8 @@ class Scene:
         for frame in self.frames:
             result.extend(self._frame_primitives(frame))
         for label in self.labels:
-            result.append(Label(label.position, label.text, self.resolved_style(label)))
+            align = getattr(label.target, "label_align", "left")
+            result.append(Label(label.position, label.text, self.resolved_style(label), align=align))
         return result
 
     def _frame_primitives(self, frame: SceneFrame) -> list[Primitive]:
