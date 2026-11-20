@@ -35,6 +35,7 @@ BACKENDS = {
     "matplotlib": "minigeo.backends.matplotlib",
     "svg": "minigeo.backends.svg",
     "plotly": "minigeo.backends.plotly",
+    "raytrace": "minigeo.backends.raytrace",
 }
 
 
@@ -257,13 +258,14 @@ class Scene:
 
         Args:
             backend: ``"matplotlib"`` (returns the 3D axes), ``"svg"`` (returns an
-                :class:`~minigeo.backends.svg.SvgDrawing`) or ``"plotly"`` (returns a
-                plotly figure for interactive viewing).
+                :class:`~minigeo.backends.svg.SvgDrawing`), ``"plotly"`` (returns a
+                plotly figure for interactive viewing) or ``"raytrace"`` (returns a
+                :class:`~minigeo.backends.raytrace.RaytracedImage` with light and shadows).
             **options: Passed on to the backend, e.g. ``elev=20``, ``show_axes=False``.
         """
         return self._backend(backend).render(self, **options)
 
-    def save(self, path: str | FilePath, **options) -> None:
+    def save(self, path: str | FilePath, *, backend: str | None = None, **options) -> None:
         """
         Save the scene; the file extension chooses the backend.
 
@@ -273,14 +275,22 @@ class Scene:
 
         Args:
             path: The file to write.
+            backend: ``"raytrace"`` to save a ray traced image instead (``.png``, ``.jpg``, ...).
             **options: Passed on to the backend, e.g. ``elev=20`` or ``width=600``.
 
         Example:
             >>> scene.save("table.svg", show_axes=False)
+            >>> scene.save("table.png", backend="raytrace", width=1000)
         """
         path = FilePath(path)
         suffix = path.suffix.lower()
-        if suffix == ".svg":
+        if backend == "raytrace":
+            self.render("raytrace", **options).save(path)
+        elif backend is not None:
+            raise ValueError(
+                "save() chooses the backend from the file extension; backend can only be 'raytrace'."
+            )
+        elif suffix == ".svg":
             self.render("svg", **options).save(path)
         elif suffix == ".html":
             self.render("plotly", **options).write_html(path)
@@ -341,7 +351,7 @@ class Scene:
         try:
             return importlib.import_module(BACKENDS[backend])
         except ImportError as error:
-            extra = {"matplotlib": "mpl"}.get(backend, backend)
+            extra = {"matplotlib": "mpl", "raytrace": "ray"}.get(backend, backend)
             raise ImportError(f'The {backend} backend needs: pip install "minigeo[{extra}]"') from error
 
     def _repr_mimebundle_(self, include=None, exclude=None) -> dict:

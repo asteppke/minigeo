@@ -41,8 +41,9 @@ Features
   diffractometer, moved by sliding and turning joints: ``x.value = 0.3``.
 - **Scenes and styles**: geometry is independent of drawing; a ``Scene`` adds colors, opacity,
   dashes, arrows and labels.
-- **Backends**: SVG (vector drawings), matplotlib (3D axes) and plotly (interactive, WebGL),
-  all with the same camera; scenes show themselves in Jupyter.
+- **Backends**: SVG (vector drawings), matplotlib (3D axes), plotly (interactive, WebGL) and a
+  ray tracer (light, shadows, exact spheres and cylinders), all with the same camera; scenes
+  show themselves in Jupyter.
 
 A first scene
 -------------
@@ -70,6 +71,7 @@ A first scene
    scene.save("table.svg")                    # or .png, .pdf (matplotlib), .html (plotly)
    scene.render("matplotlib")                 # 3D axes
    scene.render("plotly").show()              # interactive in the browser
+   scene.save("table.png", backend="raytrace")  # with light and shadows
 
 All backends take the same view options: ``elev``, ``azim`` and ``vertical_axis``
 (e.g. ``vertical_axis="x"`` when x points up).
@@ -172,10 +174,27 @@ With plotly you get a play button and a slider, and the animation also runs in a
 HTML file. With matplotlib it plays live under ipympl (``%matplotlib widget``) and otherwise
 shows as an HTML player in Jupyter; ``.save("turn.gif")`` writes a GIF.
 
+Ray tracing
+-----------
+``scene.render("raytrace")`` traces rays through every pixel: faces are lit by a light from the
+upper left, cast shadows on each other, and transparent faces show what lies behind them.
+Spheres and cylinders are hit exactly, so they are perfectly round; intersecting solids and
+lines that pass through them are drawn correctly, which the SVG and matplotlib backends
+(painting faces from back to front) cannot always do. Edges, lines and labels are hidden where
+something lies in front of them.
+
+.. code-block:: python
+
+   image = scene.render("raytrace", width=1000, samples=3)   # 3 x 3 rays per pixel
+   image.save("scene.png")                                    # or .jpg, .webp
+   scene.render("raytrace", shadows=False, background="white")
+
+It is written in numpy and takes about a second for a 500-pixel image.
+
 Installation
 ------------
-Clone the repository and install it with the backends you want (``mpl``, ``svg``, ``plotly``),
-or all of them:
+Clone the repository and install it with the backends you want (``mpl``, ``svg``, ``plotly``,
+``ray``), or all of them:
 
 .. code-block:: bash
 

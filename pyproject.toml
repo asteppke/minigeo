@@ -23,7 +23,8 @@ classifiers = [
 mpl = ["matplotlib>=3.6"]
 svg = ["svg.py>=1.4"]
 plotly = ["plotly>=5", "nbformat>=4.2"]  # plotly needs nbformat to show figures in notebooks
-all = ["minigeo[mpl,svg,plotly]"]
+ray = ["pillow>=10.1"]  # text and image files for the ray tracer
+all = ["minigeo[mpl,svg,plotly,ray]"]
 test = ["pytest", "pytest-cov", "minigeo[all]"]
 dev = ["minigeo[test]", "ruff"]
 

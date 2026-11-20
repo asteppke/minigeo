@@ -108,6 +108,9 @@ Usually used through :meth:`Scene.render`, :meth:`Scene.save` and :meth:`Scene.a
 .. automodule:: minigeo.backends.plotly
    :members: render, animate
 
+.. automodule:: minigeo.backends.raytrace
+   :members: render, RaytracedImage
+
 For backend authors
 ===================
 

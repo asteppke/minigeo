@@ -1,0 +1,903 @@
+"""
+Draw a scene by ray tracing: lit faces, cast shadows and exact spheres and cylinders.
+
+For every pixel, rays go from the viewer into the scene (several per pixel, against jagged
+edges). Where a ray hits a surface, the surface is lit by a distant light from the upper
+left, behind the viewer (Lambert shading), unless another surface is in the way: then it lies
+in shadow. Transparent faces let the ray go on and are blended with what lies behind them.
+
+Faces are split into triangles. Spheres and cylinders are hit exactly instead, so they are
+perfectly round, also after scaling (as ellipsoids and elliptic cylinders).
+
+Lines, points and labels are drawn on top of the rendered surfaces, but only where no surface
+lies in front of them: the back edges of a box stay hidden. Paths marked ``on_top`` (such as
+coordinate frames) are always drawn, and a label is only hidden by *other* objects than the
+one it belongs to.
+
+The camera is orthographic, as in the other backends, so the same ``elev``, ``azim`` and
+``vertical_axis`` give the same picture. Line widths, text and margins are measured in pixels
+of a 500-pixel-wide image: a wider image has more pixels, but looks the same.
+
+Requires ``pip install "minigeo[ray]"`` (`Pillow <https://pypi.org/project/pillow/>`_, for text
+and image files).
+"""
+
+from __future__ import annotations
+
+import io
+from dataclasses import dataclass
+from pathlib import Path as FilePath
+
+import numpy as np
+from PIL import Image, ImageColor, ImageDraw, ImageFont
+
+from ..camera import Camera
+from ..geometry import Cone, Cylinder, Geometry, Sphere
+from ..groups import Group
+from ..render import Face, Label, Marker, Path, Primitive, to_primitives
+from ..style import Style, color_value
+
+#: Line widths, text sizes and margins are given in pixels of an image this wide.
+REFERENCE_WIDTH = 500
+
+#: How bright surfaces are without direct light (in shadow, or turned away from the light).
+AMBIENT = 0.4
+
+#: Dash and gap lengths, in multiples of the line width (as in the SVG backend).
+DASH_PATTERNS = {"solid": None, "dashed": (6.0, 4.0), "dotted": (1.5, 3.0)}
+
+#: At most this many transparent surfaces behind each other are blended.
+MAX_LAYERS = 8
+
+#: Points per circle for the outline of an exact cylinder.
+CIRCLE_POINTS = 96
+
+#: The size of an arrow tip, in multiples of the line width (as in the SVG backend).
+ARROW_LENGTH = 6.0
+
+
+@dataclass
+class RaytracedImage:
+    """
+    The result of the ray tracing backend: an RGBA image.
+
+    It shows itself in Jupyter and can be saved in any format Pillow knows, e.g. PNG or JPEG.
+
+    Attributes:
+        pixels: ``(height, width, 4)`` array of 8-bit red, green, blue and alpha values.
+    """
+
+    pixels: np.ndarray
+
+    @property
+    def width(self) -> int:
+        return self.pixels.shape[1]
+
+    @property
+    def height(self) -> int:
+        return self.pixels.shape[0]
+
+    def to_pil(self) -> Image.Image:
+        """The image as a Pillow image."""
+        return Image.fromarray(self.pixels)
+
+    def to_png(self) -> bytes:
+        """The image as PNG file contents."""
+        buffer = io.BytesIO()
+        self.to_pil().save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    def _repr_png_(self) -> bytes:
+        return self.to_png()
+
+    def save(self, path: str | FilePath) -> None:
+        """
+        Write the image to a file; the extension chooses the format (``.png``, ``.jpg``, ...).
+
+        Formats without transparency (such as JPEG) get a white background.
+        """
+        path = FilePath(path)
+        image = self.to_pil()
+        if path.suffix.lower() in {".jpg", ".jpeg", ".bmp"}:
+            background = Image.new("RGBA", image.size, "white")
+            image = Image.alpha_composite(background, image).convert("RGB")
+        image.save(path)
+
+
+def render(
+    scene,
+    *,
+    width: int = 500,
+    elev: float = 30.0,
+    azim: float = -60.0,
+    vertical_axis: str = "z",
+    margin: float = 20,
+    samples: int = 3,
+    shadows: bool = True,
+    ambient: float = AMBIENT,
+    background: str | None = None,
+) -> RaytracedImage:
+    """
+    Draw ``scene`` by ray tracing.
+
+    Args:
+        scene: The :class:`~minigeo.scene.Scene` to draw.
+        width: Width of the image in pixels; the height follows from the scene's shape.
+        elev, azim, vertical_axis: Where the viewer looks from, as in the other backends.
+        margin: Empty space around the drawing, in pixels of a 500-pixel-wide image.
+        samples: Rays per pixel along each direction: 3 traces 3 x 3 rays per pixel for
+            smooth edges; 1 is fastest.
+        shadows: Whether surfaces cast shadows.
+        ambient: Brightness of surfaces without direct light, from 0 (black) to 1 (no shading).
+        background: A background color, or None for a transparent background.
+
+    Example:
+        >>> image = scene.render("raytrace", width=800)
+        >>> image.save("scene.png")
+    """
+    if samples < 1:
+        raise ValueError("samples must be at least 1.")
+    camera = Camera(elev, azim, vertical_axis)
+    contents = _Contents.collect(scene)
+    view = _View.fitting(contents.points(camera), camera, width, margin * width / REFERENCE_WIDTH, samples)
+    surfaces = _Surfaces(contents.surfaces, view.size)
+    light = _Lighting(surfaces, camera.light, ambient, shadows)
+
+    layers = _trace_layers(surfaces, light, view)
+    canvas = _Canvas(layers, view)
+    for line in contents.lines:
+        canvas.stroke(line)
+    for marker in contents.markers:
+        canvas.dot(marker)
+    image = canvas.downsampled(background)
+    _draw_labels(image, contents.labels, canvas, view)
+    return RaytracedImage(np.asarray(image))
+
+
+# ---------------------------------------------------------------- what the scene contains
+
+
+@dataclass
+class _Surface:
+    """Something rays can hit: a flat face, or an exact sphere or cylinder."""
+
+    kind: str  # "face", "sphere" or "cylinder"
+    owner: int  # index of the scene item, or -1
+    points: np.ndarray | None = None  # face corners
+    style: Style | None = None  # face style
+    to_world: np.ndarray | None = None  # sphere/cylinder: unit shape -> world (4 x 4)
+    part_styles: tuple[Style, ...] = ()  # cylinder: side, bottom, top
+
+
+@dataclass
+class _Line:
+    points: np.ndarray  # (k, 3)
+    style: Style
+    on_top: bool
+
+
+@dataclass
+class _Label:
+    label: Label
+    owners: frozenset[int]
+
+
+@dataclass
+class _Contents:
+    """The scene sorted into surfaces, lines, points and labels, each knowing its scene item."""
+
+    surfaces: list[_Surface]
+    lines: list[_Line]
+    markers: list[Marker]
+    labels: list[_Label]
+    extra_points: list[np.ndarray]
+
+    @classmethod
+    def collect(cls, scene) -> _Contents:
+        contents = cls([], [], [], [], [])
+        owners: dict[int, int] = {}  # id(geometry) -> scene item index
+        outlines: set = set()  # outline segments already drawn, as rounded end points
+        for index, item in enumerate(scene.items):
+            style = scene.resolved_style(item)
+            for geometry, primitives in _pieces(item.geometry, style, item.face_styles):
+                owners[id(geometry)] = index
+                contents._add(geometry, primitives, index, outlines)
+            owners[id(item.geometry)] = index
+        for frame in scene.frames:
+            contents._add(None, scene._frame_primitives(frame), -1, outlines)
+        for scene_label in scene.labels:
+            align = getattr(scene_label.target, "label_align", "left")
+            label = Label(scene_label.position, scene_label.text, scene.resolved_style(scene_label), align)
+            contents.labels.append(_Label(label, frozenset(_owners_of(scene_label.target, owners))))
+        return contents
+
+    def _add(self, geometry, primitives: list[Primitive], owner: int, outlines: set) -> None:
+        exact = _exact_surface(geometry, primitives, owner)
+        if exact is not None:
+            self.surfaces.append(exact)
+            ring_style = exact.part_styles[0]
+            for z in (-0.5, 0.5) if exact.kind == "cylinder" else ():
+                self.lines.append(_Line(_circle(exact.to_world, z), ring_style, False))
+            return
+        for primitive in primitives:
+            if isinstance(primitive, Face):
+                self._add_face(primitive, owner, outlines)
+            elif isinstance(primitive, Path):
+                self.lines.append(
+                    _Line(np.asarray(primitive.points, float), primitive.style, primitive.on_top)
+                )
+            elif isinstance(primitive, Marker):
+                self.markers.append(primitive)
+            elif isinstance(primitive, Label):
+                self.labels.append(_Label(primitive, frozenset({owner})))
+
+    def _add_face(self, face: Face, owner: int, outlines: set) -> None:
+        style = face.style
+        if style.fill != "none" and style.opacity > 0:
+            self.surfaces.append(_Surface("face", owner, points=np.asarray(face.points, float), style=style))
+        else:
+            self.extra_points.append(face.points)
+        if style.stroke == "none":
+            return
+        for i, j in face.outline:  # each edge once, also where two faces share it
+            a, b = face.points[i], face.points[j]
+            key = (*sorted([tuple(np.round(a, 9)), tuple(np.round(b, 9))]), style.stroke, style.line_width)
+            if key not in outlines:
+                outlines.add(key)
+                self.lines.append(_Line(np.array([a, b], dtype=float), style, False))
+
+    def points(self, camera: Camera) -> np.ndarray:
+        """All points that should fit into the picture, seen with ``camera``."""
+        points = [s.points for s in self.surfaces if s.points is not None] + self.extra_points
+        points += [_outline_points(s, camera) for s in self.surfaces if s.to_world is not None]
+        points += [line.points for line in self.lines]
+        points += [m.position[np.newaxis] for m in self.markers]
+        points += [entry.label.position[np.newaxis] for entry in self.labels]
+        return np.vstack(points) if points else np.zeros((1, 3))
+
+
+def _pieces(geometry, style: Style, face_styles):
+    """The geometries of a scene item with their primitives; groups are split into members."""
+    if isinstance(geometry, Group):
+        for member in geometry.geometries:
+            yield from _pieces(member, style, None)
+        return
+    from ..scene import _restyle_faces  # here, to avoid a circular import
+
+    primitives = to_primitives(geometry, style)
+    if face_styles:
+        primitives = _restyle_faces(geometry, primitives, face_styles)
+    yield geometry, primitives
+
+
+def _owners_of(target, owners: dict[int, int]) -> set[int]:
+    if isinstance(target, Group):
+        found = {owners[id(target)]} if id(target) in owners else set()
+        for member in target.geometries:
+            found |= _owners_of(member, owners)
+        return found
+    if isinstance(target, Geometry) and id(target) in owners:
+        return {owners[id(target)]}
+    return set()
+
+
+def _exact_surface(geometry, primitives: list[Primitive], owner: int) -> _Surface | None:
+    """An exact sphere or cylinder for the geometry, or None to use its faces instead."""
+    if isinstance(geometry, Sphere):
+        kind, unit = "sphere", Sphere([0, 0, 0], 1, segments=geometry.segments)
+    elif isinstance(geometry, Cylinder) and not isinstance(geometry, Cone):
+        kind, unit = "cylinder", Cylinder([0, 0, 0], 1, 1, segments=geometry.segments)
+    else:
+        return None
+    faces = [p for p in primitives if isinstance(p, Face)]
+    if len(faces) != len(primitives) or len(unit.local_vertices) != len(geometry.local_vertices):
+        return None
+    if kind == "sphere":
+        styles = {face.style for face in faces}
+        if len(styles) != 1:
+            return None
+        part_styles = (faces[0].style,)
+    else:
+        sides = len(geometry.side_face_indices)
+        if len({face.style for face in faces[:sides]}) != 1:
+            return None  # differently styled side faces: draw the faces themselves
+        part_styles = (faces[0].style, faces[sides].style, faces[sides + 1].style)
+    if any(style.fill == "none" for style in part_styles):
+        return None
+
+    # Every transform is affine, so the shape is an affine image of the unit shape.
+    unit_vertices = np.column_stack([unit.local_vertices, np.ones(len(unit.local_vertices))])
+    solution, *_ = np.linalg.lstsq(unit_vertices, geometry.local_vertices, rcond=None)
+    if not np.allclose(unit_vertices @ solution, geometry.local_vertices, atol=1e-9):
+        return None
+    to_local = np.eye(4)
+    to_local[:3, :3] = solution[:3].T
+    to_local[:3, 3] = solution[3]
+    to_world = geometry.pose.matrix @ to_local
+    if abs(np.linalg.det(to_world[:3, :3])) < 1e-15:
+        return None  # flattened completely
+    return _Surface(kind, owner, to_world=to_world, part_styles=part_styles)
+
+
+def _outline_points(surface: _Surface, camera: Camera) -> np.ndarray:
+    """
+    Points at the exact outline of a sphere or cylinder: its farthest points to the right,
+    left, top, bottom, front and back of the screen.
+    """
+    linear, center = surface.to_world[:3, :3], surface.to_world[:3, 3]
+    points = []
+    for direction in (camera.right, camera.up, camera.toward_viewer):
+        unit = linear.T @ direction  # the direction, seen from the unit shape
+        if surface.kind == "sphere":
+            reach = np.linalg.norm(unit)
+        else:  # radius 1 around z', height 1 along it
+            reach = np.linalg.norm(unit[:2]) + 0.5 * abs(unit[2])
+        points += [center + reach * direction, center - reach * direction]
+    return np.array(points)
+
+
+def _circle(to_world: np.ndarray, z: float) -> np.ndarray:
+    angles = np.linspace(0, 2 * np.pi, CIRCLE_POINTS + 1)
+    unit = np.column_stack([np.cos(angles), np.sin(angles), np.full(len(angles), z), np.ones(len(angles))])
+    return (unit @ to_world.T)[:, :3]
+
+
+def _rgb(color: str) -> np.ndarray:
+    return np.array(ImageColor.getrgb(color_value(color))[:3], dtype=float) / 255
+
+
+# ---------------------------------------------------------------- the view
+
+
+@dataclass
+class _View:
+    """Where each (sub)pixel's ray starts, and where 3D points end up in the image."""
+
+    camera: Camera
+    scale: float  # pixels per world unit, in the final image
+    low: np.ndarray  # lowest screen corner, world units
+    high: np.ndarray
+    margin: float  # pixels
+    width: int
+    height: int
+    samples: int
+    far: float  # rays start at this distance along toward_viewer
+    size: float  # size of the scene, for small offsets
+    zoom: float  # pixel sizes are given for a REFERENCE_WIDTH image; multiply by this
+
+    @classmethod
+    def fitting(cls, points: np.ndarray, camera: Camera, width: int, margin: float, samples: int) -> _View:
+        xy, _ = camera.project(points)
+        low, high = xy.min(axis=0), xy.max(axis=0)
+        extent = np.maximum(high - low, 1e-9)
+        scale = (width - 2 * margin) / max(extent[0], 0.1 * extent[1])
+        height = round(extent[1] * scale + 2 * margin)
+        far = float((points @ camera.toward_viewer).max()) + 1.0
+        size = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0))) or 1.0
+        return cls(
+            camera,
+            scale,
+            low,
+            high,
+            margin,
+            int(width),
+            max(height, 1),
+            samples,
+            far,
+            size,
+            width / REFERENCE_WIDTH,
+        )
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """The size of the supersampled image: (rows, columns)."""
+        return self.height * self.samples, self.width * self.samples
+
+    def ray_origins(self) -> np.ndarray:
+        """The start of every supersampled ray, row by row, on a plane in front of the scene."""
+        rows, columns = self.shape
+        x = self.low[0] + ((np.arange(columns) + 0.5) / self.samples - self.margin) / self.scale
+        y = self.high[1] - ((np.arange(rows) + 0.5) / self.samples - self.margin) / self.scale
+        camera = self.camera
+        grid_x, grid_y = np.meshgrid(x, y)
+        return (
+            grid_x.reshape(-1, 1) * camera.right
+            + grid_y.reshape(-1, 1) * camera.up
+            + self.far * camera.toward_viewer
+        )
+
+    def subpixels(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Supersampled pixel coordinates (column, row) and ray depths of 3D points."""
+        xy, _ = self.camera.project(points)
+        column = ((xy[:, 0] - self.low[0]) * self.scale + self.margin) * self.samples
+        row = ((self.high[1] - xy[:, 1]) * self.scale + self.margin) * self.samples
+        depth = self.far - np.asarray(points, float) @ self.camera.toward_viewer
+        return np.column_stack([column, row]), depth
+
+    @property
+    def world_per_subpixel(self) -> float:
+        return 1 / (self.scale * self.samples)
+
+
+# ---------------------------------------------------------------- rays and surfaces
+
+
+@dataclass
+class _Hits:
+    distance: np.ndarray  # inf where nothing was hit
+    surface: np.ndarray  # index into _Surfaces.surfaces
+    part: np.ndarray  # cylinder: 0 side, 1 bottom, 2 top; triangles: triangle index
+
+
+def _basis(direction: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Two unit vectors perpendicular to ``direction`` and to each other."""
+    helper = np.eye(3)[np.argmin(np.abs(direction))]
+    first = np.cross(direction, helper)
+    first /= np.linalg.norm(first)
+    return first, np.cross(direction, first)
+
+
+class _Surfaces:
+    """
+    All surfaces, prepared for casting many parallel rays at once.
+
+    Rays are parallel both from the orthographic camera and toward the distant light. Seen
+    along the ray direction, a ray is a point and a surface an outline: only the rays inside
+    the outline's bounding box need to be tested, and sorting the rays makes them easy to find.
+    """
+
+    def __init__(self, surfaces: list[_Surface], size: float):
+        self.surfaces = surfaces
+        triangles, owners = [], []
+        for index, surface in enumerate(surfaces):
+            if surface.kind == "face":
+                corners = surface.points
+                for k in range(1, len(corners) - 1):  # a fan of triangles
+                    triangles.append([corners[0], corners[k], corners[k + 1]])
+                    owners.append(index)
+        self.triangles = np.array(triangles, dtype=float).reshape(-1, 3, 3)
+        self.triangle_surface = np.array(owners, dtype=int)
+        edges1 = self.triangles[:, 1] - self.triangles[:, 0]
+        edges2 = self.triangles[:, 2] - self.triangles[:, 0]
+        normals = np.cross(edges1, edges2)
+        lengths = np.linalg.norm(normals, axis=1, keepdims=True)
+        self.triangle_normals = np.divide(normals, lengths, out=np.zeros_like(normals), where=lengths > 0)
+        self.exact = [i for i, s in enumerate(surfaces) if s.kind != "face"]
+        self.from_world = {i: np.linalg.inv(surfaces[i].to_world) for i in self.exact}
+        self.epsilon = 1e-7 * size
+
+        # colors and opacities, per surface and part
+        self.colors = np.zeros((len(surfaces), 3, 3))
+        self.opacities = np.ones((len(surfaces), 3))
+        self.owners = np.array([s.owner for s in surfaces] or [0], dtype=int)
+        for index, surface in enumerate(surfaces):
+            styles = surface.part_styles or (surface.style,)
+            for part in range(3):
+                style = styles[min(part, len(styles) - 1)]
+                self.colors[index, part] = _rgb(style.fill)
+                self.opacities[index, part] = style.opacity
+
+    def cast(self, origins: np.ndarray, direction: np.ndarray, start: np.ndarray) -> _Hits:
+        """The nearest hit of each ray ``origin + t * direction`` with ``t > start``."""
+        count = len(origins)
+        hits = _Hits(np.full(count, np.inf), np.full(count, -1), np.zeros(count, dtype=int))
+        if count == 0 or not self.surfaces:
+            return hits
+        across, up = _basis(direction)
+        ray_u, ray_v, ray_w = origins @ across, origins @ up, origins @ direction
+        order = np.argsort(ray_u, kind="stable")
+        sorted_u = ray_u[order]
+
+        def candidates(u, v):
+            """The rays whose (u, v) lies in the bounding box of the given outline points."""
+            pad = 1e-9 * (1 + np.abs(u).max())
+            low, high = np.searchsorted(sorted_u, [u.min() - pad, u.max() + pad])
+            rays = order[low:high]
+            return rays[(ray_v[rays] >= v.min() - pad) & (ray_v[rays] <= v.max() + pad)]
+
+        corner_u, corner_v, corner_w = (
+            self.triangles @ across,
+            self.triangles @ up,
+            self.triangles @ direction,
+        )
+        for k in range(len(self.triangles)):
+            u, v, w = corner_u[k], corner_v[k], corner_w[k]
+            e1u, e1v, e2u, e2v = u[1] - u[0], v[1] - v[0], u[2] - u[0], v[2] - v[0]
+            area = e1u * e2v - e2u * e1v
+            if abs(area) < 1e-14 * (e1u**2 + e1v**2 + e2u**2 + e2v**2) + 1e-300:
+                continue  # seen edge-on
+            rays = candidates(u, v)
+            if rays.size == 0:
+                continue
+            pu, pv = ray_u[rays] - u[0], ray_v[rays] - v[0]
+            beta = (pu * e2v - e2u * pv) / area
+            gamma = (e1u * pv - pu * e1v) / area
+            tolerance = 1e-9
+            inside = (beta >= -tolerance) & (gamma >= -tolerance) & (beta + gamma <= 1 + tolerance)
+            distance = w[0] + beta * (w[1] - w[0]) + gamma * (w[2] - w[0]) - ray_w[rays]
+            better = inside & (distance > start[rays]) & (distance < hits.distance[rays])
+            rays = rays[better]
+            hits.distance[rays] = distance[better]
+            hits.surface[rays] = self.triangle_surface[k]
+            hits.part[rays] = k
+
+        for index in self.exact:
+            surface = self.surfaces[index]
+            corners = _unit_box(surface.kind) @ surface.to_world.T
+            rays = candidates(corners[:, :3] @ across, corners[:, :3] @ up)
+            if rays.size == 0:
+                continue
+            inverse = self.from_world[index]
+            unit_origins = origins[rays] @ inverse[:3, :3].T + inverse[:3, 3]
+            unit_direction = inverse[:3, :3] @ direction
+            intersect = _hit_sphere if surface.kind == "sphere" else _hit_cylinder
+            distance, part = intersect(unit_origins, unit_direction, start[rays])
+            better = distance < hits.distance[rays]
+            rays = rays[better]
+            hits.distance[rays] = distance[better]
+            hits.surface[rays] = index
+            hits.part[rays] = part[better]
+        return hits
+
+    def normals(self, hits: _Hits, points: np.ndarray) -> np.ndarray:
+        """Unit normals at the hit points (pointing out of solids)."""
+        normals = np.zeros_like(points)
+        is_face = np.array([self.surfaces[s].kind == "face" for s in range(len(self.surfaces))])
+        flat = is_face[hits.surface]
+        normals[flat] = self.triangle_normals[hits.part[flat]]
+        for index in self.exact:
+            mask = hits.surface == index
+            if not mask.any():
+                continue
+            inverse = self.from_world[index]
+            unit = points[mask] @ inverse[:3, :3].T + inverse[:3, 3]
+            if self.surfaces[index].kind == "sphere":
+                unit_normal = unit
+            else:
+                part = hits.part[mask]
+                unit_normal = np.column_stack([unit[:, 0], unit[:, 1], np.zeros(len(unit))])
+                unit_normal[part == 1] = [0, 0, -1]
+                unit_normal[part == 2] = [0, 0, 1]
+            normal = unit_normal @ inverse[:3, :3]  # normals transform with the inverse transpose
+            normals[mask] = normal / np.linalg.norm(normal, axis=1, keepdims=True)
+        return normals
+
+    def part_index(self, hits: _Hits) -> np.ndarray:
+        """Which style of the hit surface applies: the cylinder part, else 0."""
+        is_exact = np.zeros(len(self.surfaces), dtype=bool)
+        is_exact[self.exact] = True
+        return np.where(is_exact[hits.surface], hits.part, 0)
+
+
+def _unit_box(kind: str) -> np.ndarray:
+    """The corners of the box around the unit sphere or cylinder, as homogeneous points."""
+    height = 1.0 if kind == "sphere" else 0.5
+    corners = np.array([[x, y, z, 1.0] for x in (-1, 1) for y in (-1, 1) for z in (-height, height)])
+    return corners
+
+
+def _hit_sphere(origins, direction, start):
+    """Nearest hits with the unit sphere, beyond ``start``."""
+    a = direction @ direction
+    b = 2 * origins @ direction
+    c = np.einsum("ij,ij->i", origins, origins) - 1
+    discriminant = b * b - 4 * a * c
+    root = np.sqrt(np.maximum(discriminant, 0))
+    near, far = (-b - root) / (2 * a), (-b + root) / (2 * a)
+    distance = np.where(near > start, near, np.where(far > start, far, np.inf))
+    distance[discriminant < 0] = np.inf
+    return distance, np.zeros(len(origins), dtype=int)
+
+
+def _hit_cylinder(origins, direction, start):
+    """Nearest hits with the unit cylinder (radius 1, z from -0.5 to 0.5), beyond ``start``."""
+    count = len(origins)
+    candidates = np.full((count, 4), np.inf)
+    ox, oy, oz = origins.T
+    dx, dy, dz = direction
+    a = dx * dx + dy * dy
+    if a > 1e-15:  # the side
+        b = 2 * (ox * dx + oy * dy)
+        c = ox * ox + oy * oy - 1
+        discriminant = b * b - 4 * a * c
+        root = np.sqrt(np.maximum(discriminant, 0))
+        for column, sign in ((0, -1), (1, 1)):
+            t = (-b + sign * root) / (2 * a)
+            valid = (discriminant >= 0) & (np.abs(oz + t * dz) <= 0.5)
+            candidates[valid, column] = t[valid]
+    if abs(dz) > 1e-15:  # the bottom and top
+        for column, z in ((2, -0.5), (3, 0.5)):
+            t = (z - oz) / dz
+            valid = (ox + t * dx) ** 2 + (oy + t * dy) ** 2 <= 1
+            candidates[valid, column] = t[valid]
+    candidates[candidates <= start[:, None]] = np.inf
+    best = np.argmin(candidates, axis=1)
+    distance = candidates[np.arange(count), best]
+    part = np.array([0, 0, 1, 2])[best]
+    return distance, part
+
+
+# ---------------------------------------------------------------- light and layers
+
+
+class _Lighting:
+    """Lambert shading with shadows from a distant light."""
+
+    def __init__(self, surfaces: _Surfaces, light: np.ndarray, ambient: float, shadows: bool):
+        self.surfaces = surfaces
+        self.light = np.asarray(light, dtype=float)
+        self.ambient = float(np.clip(ambient, 0, 1))
+        self.shadows = shadows
+
+    def brightness(self, points: np.ndarray, normals: np.ndarray) -> np.ndarray:
+        facing = np.clip(normals @ self.light, 0, 1)
+        if self.shadows:
+            lit = facing > 0
+            facing[lit] *= self.light_reaching(points[lit] + normals[lit] * 1e3 * self.surfaces.epsilon)
+        return self.ambient + (1 - self.ambient) * facing
+
+    def light_reaching(self, points: np.ndarray) -> np.ndarray:
+        """How much light reaches each point: 1 unblocked, less behind transparent faces, 0 in shadow."""
+        through = np.ones(len(points))
+        active = np.arange(len(points))
+        start = np.zeros(len(points))
+        for _ in range(MAX_LAYERS):
+            hits = self.surfaces.cast(points[active], self.light, start[active])
+            found = np.isfinite(hits.distance)
+            active, hits = active[found], _subset(hits, found)
+            if active.size == 0:
+                break
+            opacity = self.surfaces.opacities[hits.surface, self.surfaces.part_index(hits)]
+            through[active] *= 1 - opacity
+            start[active] = hits.distance + 1e3 * self.surfaces.epsilon
+            active = active[through[active] > 0.01]
+        return through
+
+
+def _subset(hits: _Hits, mask: np.ndarray) -> _Hits:
+    return _Hits(hits.distance[mask], hits.surface[mask], hits.part[mask])
+
+
+@dataclass
+class _Layers:
+    """The traced surfaces of the supersampled image."""
+
+    color: np.ndarray  # (n, 3) premultiplied with coverage
+    coverage: np.ndarray  # (n,) 0 where only background shows, 1 where opaque
+    depth: np.ndarray  # (n,) depth of the first opaque surface (inf if none)
+    owner: np.ndarray  # (n,) scene item of that surface (-1 if none)
+
+
+def _trace_layers(surfaces: _Surfaces, lighting: _Lighting, view: _View) -> _Layers:
+    origins = view.ray_origins()
+    direction = -view.camera.toward_viewer
+    count = len(origins)
+    color = np.zeros((count, 3))
+    through = np.ones(count)
+    depth = np.full(count, np.inf)
+    owner = np.full(count, -1)
+    start = np.zeros(count)
+    active = np.arange(count)
+    for _ in range(MAX_LAYERS):
+        hits = surfaces.cast(origins[active], direction, start[active])
+        found = np.isfinite(hits.distance)
+        active, hits = active[found], _subset(hits, found)
+        if active.size == 0:
+            break
+        points = origins[active] + hits.distance[:, None] * direction
+        normals = surfaces.normals(hits, points)
+        normals[normals @ direction > 0] *= -1  # thin faces are seen from both sides
+        part = surfaces.part_index(hits)
+        base = surfaces.colors[hits.surface, part]
+        opacity = surfaces.opacities[hits.surface, part]
+        shade = lighting.brightness(points, normals)
+        color[active] += (through[active] * opacity * shade)[:, None] * base
+
+        first_opaque = (opacity >= 0.999) & np.isinf(depth[active])
+        depth[active[first_opaque]] = hits.distance[first_opaque]
+        owner[active[first_opaque]] = surfaces.owners[hits.surface[first_opaque]]
+
+        through[active] *= 1 - opacity
+        start[active] = hits.distance + 10 * surfaces.epsilon
+        active = active[through[active] > 0.004]
+    return _Layers(color, 1 - through, depth, owner)
+
+
+# ---------------------------------------------------------------- lines, points and labels
+
+
+class _Canvas:
+    """The supersampled image, onto which lines and points are drawn with a depth test."""
+
+    def __init__(self, layers: _Layers, view: _View):
+        rows, columns = view.shape
+        self.view = view
+        self.color = layers.color.reshape(rows, columns, 3)
+        self.coverage = layers.coverage.reshape(rows, columns)
+        self.depth = layers.depth.reshape(rows, columns)
+        self.owner = layers.owner.reshape(rows, columns)
+
+    def bias(self, width: float) -> float:
+        """How far in front of a surface a line may be and still count as on it."""
+        return self.view.world_per_subpixel * (3 * width + 6) + 1e-6 * self.view.size
+
+    def stroke(self, line: _Line) -> None:
+        style = line.style
+        if style.stroke == "none" or style.opacity <= 0 or len(line.points) < 2:
+            return
+        view = self.view
+        pixels, depths = view.subpixels(line.points)
+        width = max(style.line_width * view.zoom * view.samples, 0.5)
+        tip = None
+        if style.arrow:
+            tip, pixels = _arrow_tip(pixels, width)
+        dashes = DASH_PATTERNS[style.dash]
+        pattern = None if dashes is None else (dashes[0] * width, (dashes[0] + dashes[1]) * width)
+        bias = self.bias(width)
+
+        windows = []
+        travelled = 0.0
+        for k in range(len(pixels) - 1):
+            a, b = pixels[k], pixels[k + 1]
+            window = self._window(np.vstack([a, b]), width / 2 + 1)
+            if window is None:
+                travelled += float(np.linalg.norm(b - a))
+                continue
+            rows, columns, x, y = window
+            segment = b - a
+            length_squared = float(segment @ segment)
+            along = (
+                np.zeros_like(x)
+                if length_squared == 0
+                else np.clip(((x - a[0]) * segment[0] + (y - a[1]) * segment[1]) / length_squared, 0, 1)
+            )
+            closest_x, closest_y = a[0] + along * segment[0], a[1] + along * segment[1]
+            mask = (x - closest_x) ** 2 + (y - closest_y) ** 2 <= (width / 2) ** 2
+            if pattern is not None:
+                position = travelled + along * np.sqrt(length_squared)
+                mask &= np.mod(position, pattern[1]) < pattern[0]
+            if not line.on_top:
+                depth = depths[k] + along * (depths[k + 1] - depths[k])
+                mask &= depth <= self.depth[rows, columns] + bias
+            windows.append((rows, columns, mask))
+            travelled += float(np.sqrt(length_squared))
+        if tip is not None:
+            windows.append(self._triangle(tip, depths[-1], bias, line.on_top))
+        self._paint(windows, _rgb(style.stroke), style.opacity)
+
+    def dot(self, marker: Marker) -> None:
+        style = marker.style
+        if style.fill == "none":
+            return
+        view = self.view
+        pixels, depths = view.subpixels(marker.position[np.newaxis])
+        radius = np.sqrt(style.marker_size) / 2 * view.zoom * view.samples
+        window = self._window(pixels, radius + 1)
+        if window is None:
+            return
+        rows, columns, x, y = window
+        mask = (x - pixels[0, 0]) ** 2 + (y - pixels[0, 1]) ** 2 <= radius**2
+        mask &= depths[0] <= self.depth[rows, columns] + self.bias(radius)
+        self._paint([(rows, columns, mask)], _rgb(style.fill), style.opacity)
+
+    def _window(self, pixels: np.ndarray, pad: float):
+        """The subpixels near some points: row and column slices and the subpixel centers."""
+        height, width = self.depth.shape
+        low = np.floor(pixels.min(axis=0) - pad).astype(int)
+        high = np.ceil(pixels.max(axis=0) + pad).astype(int)
+        c0, r0 = max(low[0], 0), max(low[1], 0)
+        c1, r1 = min(high[0], width), min(high[1], height)
+        if c0 >= c1 or r0 >= r1:
+            return None
+        y, x = np.mgrid[r0:r1, c0:c1] + 0.5
+        return slice(r0, r1), slice(c0, c1), x, y
+
+    def _triangle(self, corners: np.ndarray, depth: float, bias: float, on_top: bool):
+        window = self._window(corners, 1)
+        if window is None:
+            return None
+        rows, columns, x, y = window
+        (ax, ay), (bx, by), (cx, cy) = corners
+        area = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay)
+        if area == 0:
+            return None
+        beta = ((x - ax) * (cy - ay) - (cx - ax) * (y - ay)) / area
+        gamma = ((bx - ax) * (y - ay) - (x - ax) * (by - ay)) / area
+        mask = (beta >= 0) & (gamma >= 0) & (beta + gamma <= 1)
+        if not on_top:
+            mask &= depth <= self.depth[rows, columns] + bias
+        return rows, columns, mask
+
+    def _paint(self, windows, rgb: np.ndarray, opacity: float) -> None:
+        """Blend a color over the union of the windows' masks, once per subpixel."""
+        windows = [w for w in windows if w is not None]
+        if not windows:
+            return
+        height, width = self.depth.shape
+        rows = slice(min(w[0].start for w in windows), max(w[0].stop for w in windows))
+        columns = slice(min(w[1].start for w in windows), max(w[1].stop for w in windows))
+        union = np.zeros((rows.stop - rows.start, columns.stop - columns.start), dtype=bool)
+        for r, c, mask in windows:
+            union[
+                r.start - rows.start : r.stop - rows.start, c.start - columns.start : c.stop - columns.start
+            ] |= mask
+        alpha = opacity * union
+        self.color[rows, columns] = (
+            self.color[rows, columns] * (1 - alpha[..., None]) + alpha[..., None] * rgb
+        )
+        self.coverage[rows, columns] = self.coverage[rows, columns] * (1 - alpha) + alpha
+
+    def downsampled(self, background: str | None) -> Image.Image:
+        """Average the subpixels into pixels and return the image."""
+        view = self.view
+        s = view.samples
+        color = self.color.reshape(view.height, s, view.width, s, 3).mean(axis=(1, 3))
+        coverage = self.coverage.reshape(view.height, s, view.width, s).mean(axis=(1, 3))
+        if background is not None:
+            color = color + (1 - coverage)[..., None] * _rgb(background)
+            coverage = np.ones_like(coverage)
+        else:
+            color = np.divide(
+                color, coverage[..., None], out=np.zeros_like(color), where=coverage[..., None] > 0
+            )
+        rgba = np.dstack([np.clip(color, 0, 1), coverage])
+        return Image.fromarray(np.round(rgba * 255).astype(np.uint8))
+
+    def hidden(self, point: np.ndarray, owners: frozenset[int]) -> bool:
+        """Whether a surface of another scene item lies in front of the point."""
+        pixels, depths = self.view.subpixels(point[np.newaxis])
+        column, row = np.floor(pixels[0]).astype(int)
+        height, width = self.depth.shape
+        if not (0 <= row < height and 0 <= column < width):
+            return False
+        in_front = self.depth[row, column] + self.bias(2.0) < depths[0]
+        return bool(in_front and self.owner[row, column] not in owners)
+
+
+def _arrow_tip(pixels: np.ndarray, width: float) -> tuple[np.ndarray | None, np.ndarray]:
+    """The corners of an arrow tip at the end of the line, and the line shortened to meet it."""
+    end, before = pixels[-1], pixels[-2]
+    direction = end - before
+    length = float(np.linalg.norm(direction))
+    if length == 0:
+        return None, pixels
+    direction /= length
+    size = ARROW_LENGTH * width
+    base = end - direction * size
+    across = np.array([-direction[1], direction[0]]) * size / 2
+    shortened = pixels.copy()
+    shortened[-1] = end - direction * min(size * 0.7, length)
+    return np.array([end, base + across, base - across]), shortened
+
+
+def _font(size: float):
+    """A font with many symbols (DejaVu Sans from matplotlib if available), else Pillow's own."""
+    try:
+        from matplotlib import font_manager
+
+        return ImageFont.truetype(font_manager.findfont("DejaVu Sans"), size)
+    except Exception:  # matplotlib missing, or font not found
+        return ImageFont.load_default(size)
+
+
+def _draw_labels(image: Image.Image, labels: list[_Label], canvas: _Canvas, view: _View) -> None:
+    if not labels:
+        return
+    layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    fonts: dict[float, ImageFont.ImageFont] = {}
+    for entry in labels:
+        label = entry.label
+        if not label.text or canvas.hidden(np.asarray(label.position, float), entry.owners):
+            continue
+        style = label.style
+        size = style.font_size * view.zoom
+        font = fonts.setdefault(size, _font(size))
+        pixels, _ = view.subpixels(np.asarray(label.position, float)[np.newaxis])
+        x, y = pixels[0] / view.samples
+        color = ImageColor.getrgb(color_value(style.text_color))
+        if label.align == "center":
+            draw.text((x, y + 0.35 * size), label.text, fill=color, font=font, anchor="ms")
+        else:
+            draw.text((x + 3 * view.zoom, y - 3 * view.zoom), label.text, fill=color, font=font, anchor="ls")
+    image.alpha_composite(layer)
