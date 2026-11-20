@@ -5,8 +5,9 @@ Nothing here uses hand-computed coordinates: every object is placed relative to 
 one through named points such as "top", "bottom front left" or "near end". The geometry
 is built first; the scene only says how each piece looks.
 
-Run it with ``python examples/table_scene.py`` (needs ``pip install ".[mpl]"``),
-or copy ``build_scene`` into a notebook and show the returned scene.
+Run it with ``python examples/table_scene.py`` (needs ``pip install ".[all]"``): it saves
+the scene as ``table_scene.svg`` and ``table_scene.html`` (interactive, plotly) and shows it
+with matplotlib. In a notebook, ``build_scene()`` on the last line of a cell shows the scene.
 """
 
 import matplotlib.pyplot as plt
@@ -58,5 +59,8 @@ def build_scene() -> Scene:
 
 
 if __name__ == "__main__":
-    build_scene().render()
+    scene = build_scene()
+    scene.render("svg").save("table_scene.svg")
+    scene.render("plotly").write_html("table_scene.html")
+    scene.render("matplotlib")
     plt.show()

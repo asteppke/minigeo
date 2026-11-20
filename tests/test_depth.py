@@ -77,3 +77,19 @@ def test_back_faces():
     hidden = [f for f in faces if is_back_face(f, from_above)]
     assert len(hidden) == 1  # only the bottom turns away from a viewer straight above
     np.testing.assert_allclose(hidden[0].points[:, 2], -0.5)
+
+
+def test_on_top_paths_come_after_faces_but_before_labels():
+    scene = Scene()
+    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), label="box", frame=True)
+    primitives, order = order_of(scene)
+    kinds = [
+        "label"
+        if isinstance(primitives[i], Label)
+        else "top"
+        if getattr(primitives[i], "on_top", False)
+        else "solid"
+        for i in order
+    ]
+    assert kinds == sorted(kinds, key=["solid", "top", "label"].index)
+    assert kinds.count("top") == 3

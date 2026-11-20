@@ -44,10 +44,16 @@ class Face:
 
 @dataclass(frozen=True, eq=False)  # holds arrays, so no automatic ==
 class Path:
-    """A line through ``points`` (``(k, 3)``), drawn with ``stroke``; with an arrow tip if ``style.arrow``."""
+    """
+    A line through ``points`` (``(k, 3)``), drawn with ``stroke``; with an arrow tip if ``style.arrow``.
+
+    ``on_top`` paths are painted after all faces by the backends that paint from back to
+    front (SVG, matplotlib), e.g. the axes of a coordinate frame starting inside a shape.
+    """
 
     points: np.ndarray
     style: Style
+    on_top: bool = False
 
 
 @dataclass(frozen=True, eq=False)  # holds arrays, so no automatic ==

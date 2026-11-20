@@ -50,13 +50,7 @@ class GeometryGroup:
         for geometry in self.geometries:
             end = start + len(geometry.vertices)
             geometry.vertices = value[start:end]
-            geometry.update_geometry()
             start = end
-
-    def update_geometry(self) -> None:
-        """Update the geometry of the group."""
-        for geometry in self.geometries:
-            geometry.update_geometry()
 
     def anchor(self, name: str | np.ndarray = "center") -> np.ndarray:
         """

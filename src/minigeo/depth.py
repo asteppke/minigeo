@@ -14,16 +14,16 @@ import heapq
 
 import numpy as np
 
+from .camera import Camera
 from .geometry import face_normal
 from .render import Face, Label, Marker, Path, Primitive
 
 TOLERANCE = 1e-9
 
 
-def view_direction(elev: float, azim: float) -> np.ndarray:
+def view_direction(elev: float, azim: float, vertical_axis: str = "z") -> np.ndarray:
     """The unit vector pointing from the scene toward the viewer, for angles in degrees."""
-    elev, azim = np.radians(elev), np.radians(azim)
-    return np.array([np.cos(elev) * np.cos(azim), np.cos(elev) * np.sin(azim), np.sin(elev)])
+    return Camera(elev, azim, vertical_axis).toward_viewer
 
 
 def is_back_face(face: Face, toward_viewer: np.ndarray) -> bool:
@@ -35,35 +35,33 @@ def painter_order(primitives: list[Primitive], toward_viewer: np.ndarray) -> lis
     """
     Return the indices of ``primitives`` in the order to draw them, from back to front.
 
-    Labels always come last, so text is never hidden.
+    Paths marked ``on_top`` come after everything else, and labels always come last, so
+    text is never hidden.
     """
     toward_viewer = np.asarray(toward_viewer, dtype=float)
     toward_viewer = toward_viewer / np.linalg.norm(toward_viewer)
-    solid = [i for i, p in enumerate(primitives) if not isinstance(p, Label)]
     labels = [i for i, p in enumerate(primitives) if isinstance(p, Label)]
+    on_top = [i for i, p in enumerate(primitives) if isinstance(p, Path) and p.on_top]
+    solid = [i for i in range(len(primitives)) if i not in set(labels) | set(on_top)]
 
     points = [_points(primitives[i]) for i in solid]
     depth = [-float(np.dot(p.mean(axis=0), toward_viewer)) for p in points]  # larger = further away
     screen = _on_screen(points, toward_viewer)
-    screen_boxes = [np.concatenate([flat.min(axis=0), flat.max(axis=0)]) for flat in screen]
     convex = [_is_convex(primitives[i]) for i in solid]
 
     # draw_before[a] holds the items that must be drawn after a
     draw_before: list[set[int]] = [set() for _ in solid]
     waiting_for = [0] * len(solid)
-    for a in range(len(solid)):
-        for b in range(a + 1, len(solid)):
-            if not _boxes_overlap(screen_boxes[a], screen_boxes[b]):
-                continue
-            if convex[a] and convex[b] and not _convex_overlap(screen[a], screen[b]):
-                continue
-            order = _compare(primitives[solid[a]], points[a], primitives[solid[b]], points[b], toward_viewer)
-            first, second = (a, b) if order < 0 else (b, a) if order > 0 else (None, None)
-            if first is not None:
-                draw_before[first].add(second)
-                waiting_for[second] += 1
+    for a, b in _overlapping_box_pairs(screen):
+        if convex[a] and convex[b] and not _convex_overlap(screen[a], screen[b]):
+            continue
+        order = _compare(primitives[solid[a]], points[a], primitives[solid[b]], points[b], toward_viewer)
+        if order:
+            first, second = (a, b) if order < 0 else (b, a)
+            draw_before[first].add(second)
+            waiting_for[second] += 1
 
-    return [solid[k] for k in _topological_order(draw_before, waiting_for, depth)] + labels
+    return [solid[k] for k in _topological_order(draw_before, waiting_for, depth)] + on_top + labels
 
 
 # ---------------------------------------------------------------- helpers
@@ -86,13 +84,19 @@ def _on_screen(points: list[np.ndarray], toward_viewer: np.ndarray) -> list[np.n
     return [np.column_stack([p @ right, p @ up]) for p in points]
 
 
-def _boxes_overlap(a: np.ndarray, b: np.ndarray) -> bool:
-    return (
-        a[0] < b[2] - TOLERANCE
-        and b[0] < a[2] - TOLERANCE
-        and a[1] < b[3] - TOLERANCE
-        and b[1] < a[3] - TOLERANCE
+def _overlapping_box_pairs(screen: list[np.ndarray]) -> list[tuple[int, int]]:
+    """All pairs ``(a, b)`` with ``a < b`` whose 2D bounding boxes overlap (a quick first test)."""
+    if not screen:
+        return []
+    low = np.array([flat.min(axis=0) for flat in screen])
+    high = np.array([flat.max(axis=0) for flat in screen])
+    overlap = np.all(
+        (low[:, np.newaxis, :] < high[np.newaxis, :, :] - TOLERANCE)
+        & (low[np.newaxis, :, :] < high[:, np.newaxis, :] - TOLERANCE),
+        axis=2,
     )
+    a, b = np.nonzero(np.triu(overlap, k=1))
+    return list(zip(a.tolist(), b.tolist(), strict=True))
 
 
 def _is_convex(primitive: Primitive) -> bool:

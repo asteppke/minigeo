@@ -13,18 +13,29 @@ from __future__ import annotations
 import io
 
 import numpy as np
+from matplotlib.colors import LightSource
 from matplotlib.figure import Figure
+from matplotlib.patches import FancyArrowPatch
+from mpl_toolkits.mplot3d import proj3d
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
-from ..depth import is_back_face, painter_order, view_direction
-from ..mpl_3d_arrow import Arrow3D
+from ..camera import Camera
+from ..depth import is_back_face, painter_order
 from ..render import Face, Label, Marker, Path, Primitive, bounds
 from ..style import color_value
 
 LINE_STYLES = {"solid": "-", "dashed": "--", "dotted": ":"}
 
 
-def render(scene, ax=None, *, show_axes: bool = True, elev: float | None = None, azim: float | None = None):
+def render(
+    scene,
+    ax=None,
+    *,
+    show_axes: bool = True,
+    elev: float | None = None,
+    azim: float | None = None,
+    vertical_axis: str = "z",
+):
     """
     Draw ``scene`` into a 3D matplotlib axes and return the axes.
 
@@ -32,7 +43,9 @@ def render(scene, ax=None, *, show_axes: bool = True, elev: float | None = None,
         scene: The :class:`~minigeo.scene.Scene` to draw.
         ax: A 3D axes (``fig.add_subplot(projection="3d")``). If None, a new figure is made.
         show_axes: Show the x, y, z axes and grid; set False for a clean, TikZ-like drawing.
-        elev, azim: Viewing angles in degrees, as in ``ax.view_init``.
+        elev, azim: Viewing angles in degrees, as in ``ax.view_init``. If not given, the
+            axes keep their current angles (matplotlib's default is 30 and -60).
+        vertical_axis: The axis that points up on the screen: ``"x"``, ``"y"`` or ``"z"``.
     """
     if ax is None:
         import matplotlib.pyplot as plt
@@ -42,18 +55,20 @@ def render(scene, ax=None, *, show_axes: bool = True, elev: float | None = None,
         raise ValueError('The matplotlib backend needs 3D axes: fig.add_subplot(projection="3d").')
 
     ax.computed_zorder = False  # we decide the drawing order ourselves, see DepthSorter
-    primitives = scene.primitives()
-    artists = [draw(ax, primitive) for primitive in primitives]
+    elev = ax.elev if elev is None else elev
+    azim = ax.azim if azim is None else azim
+    ax.view_init(elev=elev, azim=azim, vertical_axis=vertical_axis)
+    light = _light_source(Camera(elev, azim, vertical_axis))
 
-    fit_view(ax, *bounds(primitives))
-    if elev is not None or azim is not None:
-        ax.view_init(elev=elev, azim=azim)
+    primitives = scene.primitives()
+    artists = [draw(ax, primitive, light) for primitive in primitives]
+    fit_view(ax, *bounds(primitives))  # after view_init, see fit_view
     if show_axes:
         ax.set(xlabel="x", ylabel="y", zlabel="z")
     else:
         ax.set_axis_off()
 
-    sorter = DepthSorter(ax, primitives, artists)
+    sorter = DepthSorter(ax, primitives, artists, vertical_axis)
     sorter.sort()
     sorter.connect()
     return ax
@@ -62,14 +77,15 @@ def render(scene, ax=None, *, show_axes: bool = True, elev: float | None = None,
 class DepthSorter:
     """Keeps the artists of a scene in back-to-front order for the current view."""
 
-    def __init__(self, ax, primitives: list[Primitive], artists: list[list]):
+    def __init__(self, ax, primitives: list[Primitive], artists: list[list], vertical_axis: str = "z"):
         self.ax = ax
         self.primitives = primitives
         self.artists = artists
+        self.vertical_axis = vertical_axis
 
     def sort(self) -> None:
         """Set the drawing order and hide opaque back faces, for the axes' current angles."""
-        toward_viewer = view_direction(self.ax.elev, self.ax.azim)
+        toward_viewer = Camera(self.ax.elev, self.ax.azim, self.vertical_axis).toward_viewer
         for rank, index in enumerate(painter_order(self.primitives, toward_viewer)):
             primitive = self.primitives[index]
             hidden = (
@@ -109,10 +125,16 @@ def to_png(scene, *, size: float = 5, dpi: int = 100, **options) -> bytes:
 # ---------------------------------------------------------------- one function per primitive
 
 
-def draw(ax, primitive: Primitive) -> list:
+def _light_source(camera: Camera) -> LightSource:
+    """The same light as in the SVG backend, so shading looks alike whatever the vertical axis."""
+    x, y, z = camera.light
+    return LightSource(azdeg=90 - np.degrees(np.arctan2(y, x)), altdeg=np.degrees(np.arcsin(z)))
+
+
+def draw(ax, primitive: Primitive, light: LightSource | None = None) -> list:
     """Add one primitive to the axes and return the matplotlib artists it created."""
     if isinstance(primitive, Face):
-        return draw_face(ax, primitive)
+        return draw_face(ax, primitive, light)
     if isinstance(primitive, Path):
         return draw_path(ax, primitive)
     if isinstance(primitive, Marker):
@@ -122,7 +144,7 @@ def draw(ax, primitive: Primitive) -> list:
     raise TypeError(f"Cannot draw {type(primitive).__name__}.")
 
 
-def draw_face(ax, face: Face) -> list:
+def draw_face(ax, face: Face, light: LightSource | None = None) -> list:
     style = face.style
     # A fully outlined face (e.g. of a box) uses the polygon's own edges. Otherwise the
     # outlined sides are drawn separately, so a cylinder shows no seams between side faces.
@@ -135,6 +157,7 @@ def draw_face(ax, face: Face) -> list:
         linestyles=LINE_STYLES[style.dash],
         alpha=style.opacity,
         shade=style.fill != "none",
+        lightsource=light,
     )
     ax.add_collection3d(polygon)
     artists = [polygon]
@@ -163,7 +186,7 @@ def draw_path(ax, path: Path) -> list:
     *body, tip_start, tip_end = points
     artists = ax.plot(*np.vstack([*body, tip_start]).T, linewidth=style.line_width, **look) if body else []
     tip = np.array([tip_start, tip_end]).T
-    arrow = Arrow3D(*tip, mutation_scale=15, arrowstyle="-|>", lw=style.line_width, **look)
+    arrow = _Arrow3D(*tip, mutation_scale=15, arrowstyle="-|>", lw=style.line_width, **look)
     ax.add_artist(arrow)
     return [*artists, arrow]
 
@@ -197,4 +220,19 @@ def fit_view(ax, low: np.ndarray, high: np.ndarray, padding: float = 0.05) -> No
     ax.set_xlim(middle[0] - half[0], middle[0] + half[0])
     ax.set_ylim(middle[1] - half[1], middle[1] + half[1])
     ax.set_zlim(middle[2] - half[2], middle[2] + half[2])
+    # call after ax.view_init: set_box_aspect accounts for the vertical axis set there
     ax.set_box_aspect(size)
+
+
+class _Arrow3D(FancyArrowPatch):
+    """A 2D arrow that follows two 3D points; from https://github.com/matplotlib/matplotlib/issues/22571."""
+
+    def __init__(self, xs, ys, zs, *args, **kwargs):
+        super().__init__((0, 0), (0, 0), *args, **kwargs)
+        self._verts3d = xs, ys, zs
+
+    def do_3d_projection(self, renderer=None):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, self.axes.M)
+        self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
+        return np.min(zs)

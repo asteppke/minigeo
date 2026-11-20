@@ -91,39 +91,42 @@ class BaseLine(BaseGeometry):
 
 
 class BaseAxis(BaseGeometry):
+    """
+    An axis: a segment from ``origin`` along a unit ``direction``, drawn as an arrow by default.
+
+    Unlike a :class:`BaseLine`, it keeps its direction as a unit vector, which stays up to
+    date when the axis is transformed.
+    """
+
     def __init__(
         self,
         direction: np.ndarray,
         position: np.ndarray | None = None,
-        anchor: str = "center",
+        *,
+        length: float = 1.0,
         label: str | None = None,
     ):
         """
-        Initialize an axis with an origin and direction.
-
         Args:
-            direction (np.ndarray): The direction vector (will be normalized).
-            position (np.ndarray | None): The origin of the axis (default is [0,0,0]).
-            anchor (str): (Reserved for future use – similar to BaseShape).
-            label (Optional[str]): An optional label.
-        """
-        self.origin = np.array(position) if position is not None else np.zeros(3)
-        # Normalize direction to keep it as a unit vector.
-        self.direction = np.array(direction)
-        norm = np.linalg.norm(self.direction)
-        if norm:
-            self.direction = self.direction / norm
-        self.label = label if label is not None else ""
-        self._vertices = self.calc_initial_vertices()
+            direction (array-like): The direction; only its direction matters, not its length.
+            position (array-like, optional): Where the axis starts (default: the origin).
+            length (float): How long the axis is drawn.
+            label (str, optional): An optional name.
 
-    def calc_initial_vertices(self) -> np.ndarray:
+        Example:
+            >>> BaseAxis([0, 0, 1], position=[1, 0, 0], length=2)  # from (1, 0, 0) up to (1, 0, 2)
         """
-        Calculates two endpoints of the axis.
-        By default, it creates a line segment starting at the origin and
-        extending one unit along the direction.
-        """
-        length = 1.0
-        return np.array([self.origin, self.origin + self.direction * length])
+        direction = np.asarray(direction, dtype=float)
+        norm = np.linalg.norm(direction)
+        self.direction = direction / norm if norm else direction
+        self.origin = np.asarray(position, dtype=float) if position is not None else np.zeros(3)
+        self.label = label if label is not None else ""
+        self._vertices = np.array([self.origin, self.origin + self.direction * length])
+
+    @property
+    def length(self) -> float:
+        """The length of the axis segment."""
+        return float(np.linalg.norm(self._vertices[1] - self._vertices[0]))
 
     @property
     def vertices(self) -> np.ndarray:
@@ -149,12 +152,6 @@ class BaseAxis(BaseGeometry):
     def anchor(self, name: str | float = "midway") -> np.ndarray:
         """Return a point along the axis segment; the same names as :meth:`BaseLine.anchor`."""
         return point_on_segment(self.vertices[0], self.vertices[1], name)
-
-    def update_geometry(self):
-        """
-        Hook for updating any drawn geometry of the axis.
-        Subclasses may, for example, re-draw a line.
-        """
 
     def __repr__(self):
         return f"{self.__class__.__name__} at {self.origin} with direction {self.direction}"

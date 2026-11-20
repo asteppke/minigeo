@@ -95,7 +95,6 @@ class BaseShape(BaseGeometry):
 
         if vertices is None:
             anchor = self.default_anchor if anchor is None else anchor
-            # No update_geometry() here: subclasses have not finished their setup yet.
             self.pose.matrix[:3, 3] += position - self.anchor(anchor)
 
     @abstractmethod
@@ -113,7 +112,6 @@ class BaseShape(BaseGeometry):
     def center(self, value):
         """Move the shape so that its center ends up at ``value`` (orientation is kept)."""
         self.pose.matrix[:3, 3] = value
-        self.update_geometry()
 
     @property
     def axes(self) -> np.ndarray:
@@ -222,7 +220,6 @@ class BaseShape(BaseGeometry):
             self._local_vertices = self._local_vertices @ stretch.T
             if np.linalg.det(stretch) < 0:  # mirrored: faces would now wind the wrong way
                 self._mirrored = not self._mirrored
-        self.update_geometry()
 
     def rotate(
         self,
@@ -246,9 +243,6 @@ class BaseShape(BaseGeometry):
                 raise ValueError(f'Unknown local axis {axis!r}; use "x\'", "y\'" or "z\'".')
             axis = self.axes[local_axes[axis]]
         super().rotate(axis, angle, in_degrees, about=about)
-
-    def update_geometry(self):
-        pass
 
     def __repr__(self):
         return f"{self.__class__.__name__} at {self.center} with vertices {self.vertices}"

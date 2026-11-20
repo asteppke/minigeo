@@ -1,6 +1,7 @@
 """Tests for the matplotlib backend."""
 
 import matplotlib
+import numpy as np
 import pytest
 
 matplotlib.use("Agg")
@@ -70,7 +71,7 @@ def test_labels_dashes_and_arrows(ax):
     small_scene().render(ax=ax)
     assert [t.get_text() for t in ax.texts] == ["box"]
     assert any(line.get_linestyle() == "--" for line in ax.lines)
-    assert any(type(artist).__name__ == "Arrow3D" for artist in ax.patches)
+    assert any(type(artist).__name__ == "_Arrow3D" for artist in ax.patches)
 
 
 def test_releasing_the_mouse_after_rotating_resorts_the_faces(ax):
@@ -94,7 +95,20 @@ def test_clean_view_without_axes(ax):
     assert ax.elev == 10 and ax.azim == 20
 
 
-def test_png_for_jupyter():
-    png = small_scene()._repr_png_()
-    assert png.startswith(b"\x89PNG")
+def test_png():
     assert to_png(small_scene(), size=2, dpi=50).startswith(b"\x89PNG")
+
+
+@pytest.mark.parametrize("vertical", ["x", "y", "z"])
+def test_equal_scale_for_every_vertical_axis(ax, vertical):
+    from mpl_toolkits.mplot3d import proj3d
+
+    scene = Scene()
+    scene.add(BaseBox([0, 0, 0], dimensions=[1.7, 6.6, 4.8]))
+    scene.render(ax=ax, vertical_axis=vertical)
+    box_aspect = ax._roll_to_vertical(ax._box_aspect)  # what matplotlib uses internally
+    world = proj3d.world_transformation(
+        *ax.get_xlim3d(), *ax.get_ylim3d(), *ax.get_zlim3d(), pb_aspect=box_aspect
+    )
+    scales = np.diag(world)[:3]
+    np.testing.assert_allclose(scales / scales[0], [1, 1, 1], rtol=1e-6)

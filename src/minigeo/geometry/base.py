@@ -33,7 +33,6 @@ class BaseGeometry(ABC):
     def apply_transform(self, transform: Transform) -> None:
         """Transform all vertices in place. Subclasses extend this to update derived state."""
         self.vertices = transform.apply_to_vertices(self.vertices)
-        self.update_geometry()
 
     def rotate(
         self,
@@ -81,8 +80,3 @@ class BaseGeometry(ABC):
         offset = np.asarray(at, dtype=float) - self.anchor(anchor)
         self.apply_transform(Transform().translate(offset))
         return self
-
-    def update_geometry(self) -> None:  # noqa: B027 - optional hook, empty by design
-        """
-        Hook for updating any geometry representation (e.g. redrawing).
-        """
