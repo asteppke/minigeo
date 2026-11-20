@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import TypeVar
 
@@ -251,14 +252,60 @@ class Scene:
                 plotly figure for interactive viewing).
             **options: Passed on to the backend, e.g. ``elev=20``, ``show_axes=False``.
         """
+        return self._backend(backend).render(self, **options)
+
+    def snapshots(self, update: Callable[[int], None], frames: int) -> list[list[Primitive]]:
+        """
+        Capture the scene as it changes: frame 0 as it is now, then ``update(i)`` before frame ``i``.
+
+        ``update`` changes the geometry, e.g. ``lambda i: box.rotate("z", 10, about="center")``.
+        Afterwards the geometry stays as it is in the last frame.
+        """
+        if frames < 1:
+            raise ValueError("An animation needs at least one frame.")
+        result = [self.primitives()]
+        for i in range(1, frames):
+            update(i)
+            result.append(self.primitives())
+        return result
+
+    def animate(
+        self,
+        update: Callable[[int], None],
+        frames: int,
+        backend: str = "plotly",
+        **options,
+    ):
+        """
+        Animate the scene: draw it, then call ``update(i)`` before each further frame ``i``.
+
+        Args:
+            update: A function that changes the geometry for frame ``i`` (1, 2, ...), e.g.
+                turning a box a little: ``lambda i: box.rotate("z'", 10, about="center")``.
+                It may move geometry, but should not add, remove or restyle anything.
+            frames: The number of frames, including the first one.
+            backend: ``"plotly"`` (a figure with play button and slider, runs in the browser)
+                or ``"matplotlib"`` (live with ipympl, otherwise an HTML player in Jupyter).
+            **options: Passed on to the backend, e.g. ``interval=50`` (milliseconds between
+                frames) or the view options ``elev``, ``azim`` and ``vertical_axis``.
+
+        Example:
+            >>> scene.animate(lambda i: box.rotate("z", 10, about="center"), frames=36)
+        """
+        animated = {"plotly", "matplotlib"}
+        if backend not in animated:
+            raise ValueError(f"Animations work with {' and '.join(sorted(animated))}, not {backend!r}.")
+        module = self._backend(backend)
+        return module.animate(self.snapshots(update, frames), **options)
+
+    def _backend(self, backend: str):
         if backend not in BACKENDS:
             raise ValueError(f"Unknown backend {backend!r}; available: {', '.join(BACKENDS)}.")
         try:
-            module = importlib.import_module(BACKENDS[backend])
+            return importlib.import_module(BACKENDS[backend])
         except ImportError as error:
             extra = {"matplotlib": "mpl"}.get(backend, backend)
             raise ImportError(f'The {backend} backend needs: pip install "minigeo[{extra}]"') from error
-        return module.render(self, **options)
 
     def _repr_mimebundle_(self, include=None, exclude=None) -> dict:
         """

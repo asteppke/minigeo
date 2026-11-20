@@ -72,7 +72,17 @@ def test_camera_matches_the_other_backends(elev, azim, vertical):
     up = [layout.camera.up.x, layout.camera.up.y, layout.camera.up.z]
     assert up[{"x": 0, "y": 1, "z": 2}[vertical]] == 1
     assert layout.camera.projection.type == "orthographic"
-    assert layout.aspectmode == "data"
+
+
+def test_equal_scale_and_fixed_ranges():
+    scene = Scene()
+    scene.add(BaseBox([0, 0, 0], dimensions=[4, 2, 1]))
+    layout = scene.render("plotly").layout.scene
+    spans = np.array([np.diff(axis.range)[0] for axis in (layout.xaxis, layout.yaxis, layout.zaxis)])
+    ratio = np.array([layout.aspectratio.x, layout.aspectratio.y, layout.aspectratio.z])
+    np.testing.assert_allclose(ratio, spans / spans.max())  # equal scale on all axes
+    assert ratio.max() == 1  # the box fits into the picture from every direction
+    assert not layout.xaxis.autorange
 
 
 def test_hide_axes():

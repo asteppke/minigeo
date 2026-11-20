@@ -11,6 +11,7 @@ Requires ``pip install "minigeo[mpl]"``.
 from __future__ import annotations
 
 import io
+from dataclasses import dataclass
 
 import numpy as np
 from matplotlib.colors import LightSource
@@ -47,6 +48,120 @@ def render(
             axes keep their current angles (matplotlib's default is 30 and -60).
         vertical_axis: The axis that points up on the screen: ``"x"``, ``"y"`` or ``"z"``.
     """
+    ax, light = _prepare_axes(ax, elev, azim, vertical_axis)
+    primitives = scene.primitives()
+    artists = [draw(ax, primitive, light) for primitive in primitives]
+    _finish_axes(ax, primitives, show_axes)
+
+    sorter = DepthSorter(ax, primitives, artists, vertical_axis)
+    sorter.sort()
+    sorter.connect()
+    return ax
+
+
+def animate(
+    snapshots: list[list[Primitive]],
+    ax=None,
+    *,
+    interval: float = 50,
+    repeat: bool = True,
+    show_axes: bool = True,
+    elev: float | None = None,
+    azim: float | None = None,
+    vertical_axis: str = "z",
+) -> MatplotlibAnimation:
+    """
+    Play a sequence of scene snapshots as a matplotlib animation.
+
+    With an interactive backend (``%matplotlib widget`` from ipympl in Jupyter, or a desktop
+    window) it plays live and the view can be rotated meanwhile. With the default inline
+    backend, Jupyter shows it as an HTML player instead. Use
+    :meth:`Scene.animate <minigeo.scene.Scene.animate>` rather than calling this directly.
+
+    Args:
+        snapshots: The primitives of each frame, see :meth:`Scene.snapshots <minigeo.scene.Scene.snapshots>`.
+        interval: Time between frames in milliseconds.
+        repeat: Start again after the last frame.
+        Other arguments as in :func:`render`.
+    """
+    from matplotlib.animation import FuncAnimation
+
+    created_here = ax is None
+    ax, light = _prepare_axes(ax, elev, azim, vertical_axis)
+    _finish_axes(ax, [p for snapshot in snapshots for p in snapshot], show_axes)  # one view for all frames
+    sorter = DepthSorter(ax, [], [], vertical_axis)
+    sorter.connect()
+
+    def show(frame: int) -> list:
+        for artist in (a for group in sorter.artists for a in group):
+            artist.remove()
+        sorter.primitives = snapshots[frame]
+        sorter.artists = [draw(ax, primitive, light) for primitive in sorter.primitives]
+        sorter.sort()
+        return [a for group in sorter.artists for a in group]
+
+    show(0)
+    animation = FuncAnimation(ax.figure, show, frames=len(snapshots), interval=interval, repeat=repeat)
+    if created_here and _inline_backend():
+        import matplotlib.pyplot as plt
+
+        plt.close(ax.figure)  # otherwise Jupyter also shows the first frame as a still image
+    return MatplotlibAnimation(animation, len(snapshots))
+
+
+@dataclass
+class MatplotlibAnimation:
+    """
+    A matplotlib animation of a scene.
+
+    In Jupyter it shows itself: live with ipympl (``%matplotlib widget``), otherwise as an
+    HTML player. ``save("rotation.gif")`` writes it to a file.
+    """
+
+    animation: object  # matplotlib.animation.FuncAnimation
+    frames: int
+
+    @property
+    def figure(self):
+        return self.animation._fig
+
+    def to_jshtml(self) -> str:
+        """The animation as an HTML player with all frames embedded (works without a kernel)."""
+        return self.animation.to_jshtml(default_mode="loop")
+
+    def save(self, path: str, **options) -> None:
+        """Save as a ``.gif`` (needs Pillow, which matplotlib installs) or ``.mp4`` (needs ffmpeg)."""
+        if str(path).endswith(".gif"):
+            options.setdefault("writer", "pillow")
+        self.animation.save(path, **options)
+
+    def _repr_html_(self) -> str | None:
+        if _live_backend():
+            return None  # the live figure shows itself
+        return self.to_jshtml()
+
+    def __repr__(self) -> str:
+        return f"MatplotlibAnimation with {self.frames} frames"
+
+
+def _backend_name() -> str:
+    import matplotlib
+
+    return matplotlib.get_backend().lower()
+
+
+def _live_backend() -> bool:
+    """ipympl and the classic notebook backend draw live in Jupyter."""
+    name = _backend_name()
+    return "ipympl" in name or "widget" in name or "nbagg" in name
+
+
+def _inline_backend() -> bool:
+    return "inline" in _backend_name()
+
+
+def _prepare_axes(ax, elev, azim, vertical_axis):
+    """Create or check the 3D axes, set the view and return the axes and a matching light."""
     if ax is None:
         import matplotlib.pyplot as plt
 
@@ -58,20 +173,15 @@ def render(
     elev = ax.elev if elev is None else elev
     azim = ax.azim if azim is None else azim
     ax.view_init(elev=elev, azim=azim, vertical_axis=vertical_axis)
-    light = _light_source(Camera(elev, azim, vertical_axis))
+    return ax, _light_source(Camera(elev, azim, vertical_axis))
 
-    primitives = scene.primitives()
-    artists = [draw(ax, primitive, light) for primitive in primitives]
+
+def _finish_axes(ax, primitives: list[Primitive], show_axes: bool) -> None:
     fit_view(ax, *bounds(primitives))  # after view_init, see fit_view
     if show_axes:
         ax.set(xlabel="x", ylabel="y", zlabel="z")
     else:
         ax.set_axis_off()
-
-    sorter = DepthSorter(ax, primitives, artists, vertical_axis)
-    sorter.sort()
-    sorter.connect()
-    return ax
 
 
 class DepthSorter:

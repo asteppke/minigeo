@@ -90,6 +90,21 @@ For orientation, ``scene.add(shape, frame=True)`` draws the shape's own axes x',
 arrows that turn with it, and ``scene.add_frame()`` draws the world axes x, y, z at the
 origin (or ``scene.add_frame(point)`` anywhere else).
 
+Animations
+----------
+``scene.animate(update, frames)`` draws the scene, then calls ``update(i)`` before each further
+frame, for example to turn a box a little:
+
+.. code-block::
+
+   scene.animate(lambda i: box.rotate("x'", 10, about="center"), frames=36)          # plotly
+   scene.animate(lambda i: box.rotate("x'", 10, about="center"), frames=36,
+                 backend="matplotlib")                                                  # matplotlib
+
+With plotly you get a play button and a slider, and the animation also runs in an exported
+HTML file. With matplotlib it plays live under ipympl (``%matplotlib widget``) and otherwise
+shows as an HTML player in Jupyter; ``.save("turn.gif")`` writes a GIF.
+
 Installation
 ------------
 Clone the repository and install it with the backends you want (``mpl``, ``svg``, ``plotly``),
@@ -110,6 +125,7 @@ For development (tests and linting):
 Examples
 --------
 - ``examples/getting_started.ipynb``: a tour of geometry, transforms, anchors, scenes and the three backends.
+- ``examples/animations.ipynb``: a box turning around its own axis, animated with plotly and matplotlib.
 - ``examples/Cristallina.ipynb``: a sketch of an X-ray scattering experiment, with x pointing up.
 - ``examples/table_scene.py``: the scene from the picture above, built entirely with anchors.
 

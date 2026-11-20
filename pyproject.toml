@@ -22,7 +22,7 @@ classifiers = [
 [project.optional-dependencies]
 mpl = ["matplotlib>=3.6"]
 svg = ["svg.py>=1.4"]
-plotly = ["plotly>=5"]
+plotly = ["plotly>=5", "nbformat>=4.2"]  # plotly needs nbformat to show figures in notebooks
 all = ["minigeo[mpl,svg,plotly]"]
 test = ["pytest", "pytest-cov", "minigeo[all]"]
 dev = ["minigeo[test]", "ruff"]
