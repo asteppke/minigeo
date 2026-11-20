@@ -1,9 +1,66 @@
 [build-system]
-# AVOID CHANGING REQUIRES: IT WILL BE UPDATED BY PYSCAFFOLD!
-requires = ["setuptools>=46.1.0", "setuptools_scm[toml]>=5"]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "minigeo"
+description = "A minimal interactive 3D geometry library for visualizing shapes and transformations"
+readme = "README.rst"
+authors = [{ name = "Alexander Steppke" }]
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.23"]
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Framework :: Jupyter",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.optional-dependencies]
+mpl = ["matplotlib>=3.6"]
+test = ["pytest", "pytest-cov", "minigeo[mpl]"]
+dev = ["minigeo[test]", "ruff"]
+
+[project.urls]
+Source = "https://github.com/asteppke/minigeo"
+Issues = "https://github.com/asteppke/minigeo/issues"
+
 [tool.setuptools_scm]
-# For smarter version schemes and other configuration options,
-# check out https://github.com/pypa/setuptools_scm
 version_scheme = "no-guess-dev"
+
+# ---------------------------------------------------------------- testing
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib"]
+
+[tool.coverage.run]
+branch = true
+source = ["minigeo"]
+
+[tool.coverage.report]
+exclude_also = [
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+# ---------------------------------------------------------------- linting
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["docs/conf.py", "examples"]  # notebooks are demos, not linted (yet)
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # isort
+    "UP",      # pyupgrade: modern syntax for py310+
+    "B",       # bugbear: likely bugs
+    "SIM",     # simplifications
+    "NPY",     # numpy-specific rules
+]
+ignore = ["E501"]  # line length is handled by `ruff format`; long docstrings are fine

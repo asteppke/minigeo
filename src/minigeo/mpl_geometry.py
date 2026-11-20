@@ -1,17 +1,19 @@
-from typing import Protocol, List
+from typing import Protocol
+
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from .geometry import BaseRectangle, BaseBox, BasePolygon, BaseLine, BaseCylinder, BaseCone
+
+from .geometry import BaseBox, BaseCone, BaseCylinder, BaseLine, BasePolygon, BaseRectangle
 from .groups import GeometryGroup
 from .mpl_3d_arrow import Arrow3D
+
 
 class MplDrawable(Protocol):
     """
     Protocol for drawable objects using Matplotlib.
     """
-    def _draw(self) -> None:
-        ...
 
+    def _draw(self) -> None: ...
 
 
 class MplPoly(BasePolygon):
@@ -75,18 +77,17 @@ class MplBox(BaseBox):
         self.poly.set_verts(self.faces)
 
 
-
 class MplCube(MplBox):
     def __init__(
         self,
         ax,
         center,
         size,
-        face_colors=["red", "red", "blue", "blue", "orange", "orange"],
+        face_colors=("red", "red", "blue", "blue", "orange", "orange"),
         alpha=0.75,
     ):
         super().__init__(ax, center, (size, size, size), color="white", alpha=alpha, draw=False)
-        self.face_colors = face_colors
+        self.face_colors = list(face_colors)
         self.edge_colors = ["gray"] * len(face_colors)
         self._draw()
 
@@ -103,7 +104,6 @@ class MplCube(MplBox):
 
     def add_face_labels(self):
         # Add text labels to cube faces
-        original_face_labels = ["Front", "Back", "Bottom", "Top", "Left", "Right"]
         face_labels = ["Front", "ab", "Bottom", "ac", "Left", "bc"]
         for i, face in enumerate(self.faces):
             if face_labels[i] in ["Front", "Bottom", "Left"]:
@@ -112,6 +112,7 @@ class MplCube(MplBox):
             self.ax.text(
                 center[0], center[1], center[2], face_labels[i], color="black", ha="center", va="center"
             )
+
 
 class MplLine(BaseLine):
     def __init__(self, ax, start, end, color="C0", alpha=1, draw=True, arrow_tip=False):
@@ -139,18 +140,30 @@ class MplLine(BaseLine):
             )
             self.ax.add_artist(self.arrow)
         else:
-            self.line, = self.ax.plot([self.start[0], self.end[0]], [self.start[1], self.end[1]], [self.start[2], self.end[2]], color=self.color, alpha=self.alpha)
+            (self.line,) = self.ax.plot(
+                [self.start[0], self.end[0]],
+                [self.start[1], self.end[1]],
+                [self.start[2], self.end[2]],
+                color=self.color,
+                alpha=self.alpha,
+            )
 
-    
     def update_geometry(self):
         if self.arrow_tip:
-            self.arrow._verts3d = ([self.start[0], self.end[0]], [self.start[1], self.end[1]], [self.start[2], self.end[2]])
-            self.arrow.stale = True # similar to Line3D.set_data_3d
+            self.arrow._verts3d = (
+                [self.start[0], self.end[0]],
+                [self.start[1], self.end[1]],
+                [self.start[2], self.end[2]],
+            )
+            self.arrow.stale = True  # similar to Line3D.set_data_3d
         else:
-            self.line.set_data_3d([self.start[0], self.end[0]], [self.start[1], self.end[1]], [self.start[2], self.end[2]])
+            self.line.set_data_3d(
+                [self.start[0], self.end[0]], [self.start[1], self.end[1]], [self.start[2], self.end[2]]
+            )
+
 
 class MplCylinder(BaseCylinder):
-    def __init__(self, ax, center, dimensions : tuple, color="C0", alpha=1, draw=True):
+    def __init__(self, ax, center, dimensions: tuple, color="C0", alpha=1, draw=True):
         radius, height = dimensions
 
         super().__init__(center, (radius, height))
@@ -201,6 +214,7 @@ class MplCylinder(BaseCylinder):
         self.poly2.set_verts(self.top_faces)
         self.poly3.set_verts(self.bottom_faces)
 
+
 class MplCone(BaseCone, MplCylinder):
     def __init__(self, ax, center, lower_radius, upper_radius, height, color="C0", alpha=1, draw=True):
         BaseCone.__init__(self, center, (lower_radius, upper_radius, height))
@@ -217,12 +231,12 @@ class MplCone(BaseCone, MplCylinder):
 
 
 class MplGroup(GeometryGroup):
-    def __init__(self, ax, geometries : List[MplDrawable]=None, draw=True):
+    def __init__(self, ax, geometries: list[MplDrawable] = None, draw=True):
         """
         Groups Mpl geometries together and keeps their relative positions.
 
         """
-    
+
         super().__init__(geometries)
         # TODO: think if we need to keep a reference to the ax
         # this is at the moment only to have a similar interface
@@ -233,7 +247,7 @@ class MplGroup(GeometryGroup):
     def _draw(self):
         # Call each geometry’s draw method
         for geom in self.geometries:
-            if hasattr(geom, '_draw'):
+            if hasattr(geom, "_draw"):
                 geom._draw()
 
 

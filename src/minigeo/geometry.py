@@ -6,9 +6,10 @@ and is independent of any specific visualization library.
 """
 
 from __future__ import annotations
+
 import sys
-from typing import Optional, List
 from abc import ABC, abstractmethod
+
 import numpy as np
 
 
@@ -244,14 +245,13 @@ class Transform:
 
         new_vertices = self.apply_to_vertices(other.vertices)
         other.vertices = new_vertices
-        
+
         if hasattr(other, "_center"):
             other._center = self.apply_to_vertex(other._center)
 
         other.update_geometry()
-        
-    
-    def __matmul__(self, other: "BaseGeometry") -> "BaseGeometry":
+
+    def __matmul__(self, other: BaseGeometry) -> BaseGeometry:
         """
         Overload the @ operator to apply the transform to a shape.
         """
@@ -260,16 +260,19 @@ class Transform:
         # But using @= as in-place operation is also strange as the transform is not modified but applied.
         self.apply(other)
 
+
 class BaseGeometry(ABC):
     """
     Base class for all geometry classes.
     Every geometry contains vertices (np.ndarrray) as underlying properties."""
 
     @property
+    @abstractmethod
     def vertices(self) -> np.ndarray:
         """Return the vertices of the geometry."""
 
     @vertices.setter
+    @abstractmethod
     def vertices(self, value: np.ndarray):
         """Set the vertices of the geometry."""
 
@@ -281,7 +284,7 @@ class BaseGeometry(ABC):
         self.vertices = transform.apply_to_vertices(self.vertices)
         self.update_geometry()
 
-    def update_geometry(self) -> None:
+    def update_geometry(self) -> None:  # noqa: B027 - optional hook, empty by design
         """
         Hook for updating any geometry representation (e.g. redrawing).
         """
@@ -292,7 +295,7 @@ class BasePoint(BaseGeometry):
     Represents a single 3D point or vertex.
     """
 
-    def __init__(self, position: np.ndarray, label: Optional[str] = None):
+    def __init__(self, position: np.ndarray, label: str | None = None):
         """
         Initialize a single point.
 
@@ -329,7 +332,7 @@ class BaseLine(BaseGeometry):
         self,
         start: np.ndarray,
         end: np.ndarray,
-        label: Optional[str] = None,
+        label: str | None = None,
     ):
 
         self.start = np.array(start)
@@ -361,7 +364,7 @@ class BaseAxis(BaseGeometry):
         direction: np.ndarray,
         position: np.ndarray | None = None,
         anchor: str = "center",
-        label: Optional[str] = None,
+        label: str | None = None,
     ):
         """
         Initialize an axis with an origin and direction.
@@ -441,7 +444,7 @@ class BaseAxis(BaseGeometry):
 class BaseShape(BaseGeometry):
     def __init__(
         self,
-        position: np.ndarray | List,
+        position: np.ndarray | list,
         dimensions: np.ndarray | None = None,
         vertices: np.ndarray | None = None,
         anchor: str = "center",
@@ -536,7 +539,7 @@ class BaseShape(BaseGeometry):
         self.vertices = transform.apply_to_vertices(self.vertices)
         self._center = transform.apply_to_vertices(self.center)
         self.update_geometry()
-   
+
     def update_geometry(self):
         pass
 
@@ -666,11 +669,10 @@ class BaseCircle(BaseShape):
                 for i in range(len(self.vertices))
             ]
         )
-    
+
     def __repr__(self) -> str:
-        return (
-            f"BaseCircle at {self.center} with radius {self.dimensions[0]}"
-        )    
+        return f"BaseCircle at {self.center} with radius {self.dimensions[0]}"
+
 
 class BaseBox(BaseShape):
     def calc_initial_vertices(self, vertices=None) -> np.ndarray:
@@ -748,8 +750,7 @@ class BaseCylinder(BaseShape):
     def side_faces(self):
         n = len(self.vertices) // 2
         v = self.vertices
-        return np.array([[v[i], v[(i + 1) % n], v[n + (i + 1) % n], v[n + i]]
-                        for i in range(n)])
+        return np.array([[v[i], v[(i + 1) % n], v[n + (i + 1) % n], v[n + i]] for i in range(n)])
 
     @property
     def top_faces(self) -> np.ndarray:
@@ -782,7 +783,7 @@ class BaseCone(BaseCylinder):
         x, y, z = self.center
         lower_radius, upper_radius, height = self.dimensions
         n = 16  # Number of vertices
-        theta = np.linspace(0, 2 * np.pi, n)
+        theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
         vertices_bottom, vertices_top = np.zeros((n, 3)), np.zeros((n, 3))
         vertices_bottom[:, 0] = x + lower_radius * np.cos(theta)
         vertices_bottom[:, 1] = y + lower_radius * np.sin(theta)
