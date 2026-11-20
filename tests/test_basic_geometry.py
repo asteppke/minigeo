@@ -1,16 +1,14 @@
 import numpy as np
-import pytest
 
 from minigeo.geometry import (
-    BasePoint,
-    BaseLine,
     BaseAxis,
-    BaseRectangle,
-    BaseCircle,
     BaseBox,
-    BaseCylinder,
+    BaseCircle,
     BaseCone,
-    BasePolygon,  # though not used much
+    BaseCylinder,
+    BaseLine,
+    BasePoint,
+    BaseRectangle,
     Transform,
 )
 

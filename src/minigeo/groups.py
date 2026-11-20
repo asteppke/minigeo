@@ -1,25 +1,26 @@
 import numpy as np
-from .geometry import BaseGeometry
-from .geometry import Transform 
+
+from .geometry import BaseGeometry, Transform
+
 
 class GeometryGroup:
     def __init__(self, geometries: list[BaseGeometry] | None = None):
         """
         Container for multiple BaseGeometry objects.
-        
+
         Args:
             geometries (list[BaseGeometry] | None): Optional starting list of geometries.
         """
         self.geometries = geometries if geometries is not None else []
-    
+
     def add(self, geometry: BaseGeometry) -> None:
         """Add a geometry object to the group."""
         self.geometries.append(geometry)
-    
+
     def remove(self, geometry: BaseGeometry) -> None:
         """Remove a geometry object from the group."""
         self.geometries.remove(geometry)
-    
+
     @property
     def center(self) -> np.ndarray:
         """
@@ -29,7 +30,7 @@ class GeometryGroup:
             return np.zeros(3)
         centers = np.array([g.center for g in self.geometries])
         return np.mean(centers, axis=0)
-    
+
     @property
     def vertices(self) -> np.ndarray:
         """Return the vertices of the geometry."""
@@ -46,7 +47,6 @@ class GeometryGroup:
             geometry.vertices = value[start:end]
             geometry.update_geometry()
             start = end
-
 
     def update_geometry(self) -> None:
         """Update the geometry of the group."""
