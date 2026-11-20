@@ -58,6 +58,26 @@ def resolve_pivot(about: np.ndarray | str | None, owner) -> np.ndarray | None:
     return about
 
 
+def split_rotation(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Split a 3x3 linear map into ``rotation @ stretch`` (polar decomposition).
+
+    ``rotation`` is a proper rotation (orthonormal, determinant +1) and ``stretch`` holds
+    everything else: scaling, shear and mirroring. For a pure rotation, ``stretch`` is the
+    identity; for a scaling along the rotated axes, ``rotation`` is unchanged.
+
+    Returns:
+        (rotation, stretch): two 3x3 arrays with ``rotation @ stretch == matrix``.
+    """
+    u, _, vt = np.linalg.svd(matrix)
+    if np.linalg.det(u @ vt) < 0:
+        # A mirroring map: keep the frame right-handed and leave the flip in the stretch.
+        u[:, -1] *= -1
+    rotation = u @ vt
+    stretch = rotation.T @ matrix
+    return rotation, stretch
+
+
 class Transform:
     """
     Represents an affine transformation in 3D. The transformation is represented by a 4x4 matrix (homogenous).
@@ -483,80 +503,94 @@ class BaseAxis(BaseGeometry):
         return f"{self.__class__.__name__} at {self.origin} with direction {self.direction}"
 
 
+def ring(radius: float, z: float, n: int = 16) -> np.ndarray:
+    """Return ``n`` points on a horizontal circle of the given radius at height ``z``."""
+    theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    return np.column_stack([radius * np.cos(theta), radius * np.sin(theta), np.full(n, z)])
+
+
 class BaseShape(BaseGeometry):
+    """
+    A shape with its own coordinate system x', y', z' (its *pose*).
+
+    The vertices are stored in the shape's local coordinates, around the local origin.
+    ``pose`` is a rigid transform (rotation + translation) that places them in the world::
+
+        world_vertices = pose @ local_vertices
+
+    From the pose follow:
+
+    * ``center``: the local origin in world coordinates
+    * ``axes``: the local x', y', z' directions in world coordinates (always perpendicular unit vectors)
+
+    Applying a transform updates the pose with its rotation and translation. Any scaling or
+    shear is applied to the local vertices instead, so the shape deforms while its axes stay
+    perpendicular.
+    """
+
     def __init__(
         self,
         position: np.ndarray | list,
         dimensions: np.ndarray | None = None,
         vertices: np.ndarray | None = None,
-        anchor: str = "center",
-        enable_axes: bool = False,
-        axes_length: float = 1.0,
     ):
         """
-        Initialize a BaseShape which has a position and dimensions or vertices.
+        Initialize a shape at ``position`` from its dimensions or explicit vertices.
+
+        The local axes x', y', z' initially line up with the world axes x, y, z.
 
         Args:
-            position (np.array): The center (anchor) position of the shape.
-            dimensions (np.array): The dimensions of the shape, e.g. [width, length, height, ...] for basic shapes.
-                                   This is interpreted differently for different shapes.
-            vertices (np.array): The vertices of the shape. If None, the vertices are calculated from the dimensions.
-                                 The vertices are defined in a counter-clockwise order, relative to the center position.
-            anchor (str): The anchor point of the shape. Default is 'center', other options depend on the shape, e.g.
-                          'bottom_corner', 'top_corner', 'front_face_center'.
+            position (array-like): Where the local origin (the center) is placed.
+            dimensions (array-like): The dimensions of the shape, e.g. [width, length, height]
+                for a box. Their meaning depends on the shape.
+            vertices (array-like): Explicit vertices, relative to ``position``. If None, they are
+                calculated from the dimensions.
         """
-        # TODO: make anchor and shift work correctly.
-        # TODO: think about a good way for the dimensions parameter. Either different keywords for different shapes
-        # or a general approach where the dimensions are interpreted differently for different shapes.
-        self.anchor = anchor
-        self._center = np.array(position)
+        # TODO: think about a good way for the dimensions parameter. Either different keywords for
+        # different shapes or a general approach where the dimensions are interpreted differently.
         self.dimensions = np.array(dimensions)
-        self.rotation_matrix = np.eye(4)
-        self._vertices = self.calc_initial_vertices(vertices) if vertices is None else vertices
-        # self._vertices = self._interpret_position(self._vertices, self.dimensions, self.anchor)
-        self.axes = self.generate_axes() if enable_axes else None
+        self.pose = Transform().translate(position)
+        local = self.calc_initial_vertices() if vertices is None else vertices
+        self._local_vertices = np.asarray(local, dtype=float)
 
-    def _interpret_position(self, vertices: np.ndarray, dims: np.ndarray, anchor: str) -> np.ndarray:
-        """
-        Adjusts the given position according to the provided anchor type.
-        """
-        if anchor == "center":
-            return vertices + self._center
-        elif anchor == "bottom_corner":
-            # pos is the bottom (min) corner; center is half the extents away.
-            return vertices + dims / 2
-        elif anchor == "top_corner":
-            # pos is the top (max) corner.
-            return vertices - dims / 2
-        elif anchor == "front_face_center":
-            # Assume "front" along the negative y-axis.
-            return vertices + np.array([0, dims[1] / 2, 0])
+    @abstractmethod
+    def calc_initial_vertices(self) -> np.ndarray:
+        """Return the vertices in local coordinates, i.e. around the local origin."""
 
-        raise ValueError(f"Unrecognized anchor type: {anchor}")
+    # ------------------------------------------------------------ derived from the pose
 
     @property
-    def center(self) -> np.array:
-        return self._center
+    def center(self) -> np.ndarray:
+        """The local origin in world coordinates."""
+        return self.pose.matrix[:3, 3].copy()
 
     @center.setter
     def center(self, value):
-        """Move the shape so that its center ends up at ``value``."""
-        value = np.asarray(value, dtype=float)
-        self._vertices = self.vertices + (value - self._center)
-        self._center = value
+        """Move the shape so that its center ends up at ``value`` (orientation is kept)."""
+        self.pose.matrix[:3, 3] = value
         self.update_geometry()
 
-    @abstractmethod
-    def calc_initial_vertices(self, vertices) -> np.array:
-        pass
+    @property
+    def axes(self) -> np.ndarray:
+        """The local axes as rows ``[x', y', z']``: perpendicular unit vectors in world coordinates."""
+        return self.pose.matrix[:3, :3].T.copy()
 
     @property
-    def vertices(self) -> np.array:
-        return np.array(self._vertices)
+    def local_vertices(self) -> np.ndarray:
+        """The vertices in the shape's own coordinate system."""
+        return self._local_vertices.copy()
+
+    @property
+    def vertices(self) -> np.ndarray:
+        """The vertices in world coordinates."""
+        return self.pose.apply_to_vertices(self._local_vertices)
 
     @vertices.setter
     def vertices(self, value):
-        self._vertices = value
+        """Set the world vertices; they are stored relative to the current pose."""
+        rotation, translation = self.pose.matrix[:3, :3], self.pose.matrix[:3, 3]
+        # inverse of a rigid transform: R^T (v - t), written for row vectors
+        self._local_vertices = (np.asarray(value, dtype=float) - translation) @ rotation
 
     @property
     def faces(self) -> np.ndarray:
@@ -571,24 +605,49 @@ class BaseShape(BaseGeometry):
         """
         raise NotImplementedError("Subclasses must implement the edges property.")
 
+    # ------------------------------------------------------------ transforming
+
     def apply_transform(self, transform: Transform) -> None:
-        """Transform the vertices and keep the center and the shape's own axes in sync."""
-        self._center = transform.apply_to_vertex(self._center)
-        for axis in self.axes or []:
-            axis.apply_transform(transform)
-        super().apply_transform(transform)
+        """
+        Apply a world transform: rotation and translation move the pose, while scaling and
+        shear deform the local vertices.
+        """
+        linear, offset = transform.matrix[:3, :3], transform.matrix[:3, 3]
+        rotation, translation = self.pose.matrix[:3, :3], self.pose.matrix[:3, 3]
+
+        new_rotation, stretch = split_rotation(linear @ rotation)
+        self.pose.matrix[:3, :3] = new_rotation
+        self.pose.matrix[:3, 3] = linear @ translation + offset
+
+        if not np.allclose(stretch, np.eye(3)):  # skip for rigid transforms, avoids rounding drift
+            self._local_vertices = self._local_vertices @ stretch.T
+        self.update_geometry()
+
+    def rotate(
+        self,
+        axis: str | np.ndarray,
+        angle: float,
+        in_degrees: bool = True,
+        *,
+        about: np.ndarray | str | None = None,
+    ) -> None:
+        """
+        Rotate the shape in place, like :meth:`BaseGeometry.rotate`.
+
+        In addition, ``axis`` can be one of the shape's own axes ``"x'"``, ``"y'"`` or ``"z'"``.
+
+        Example:
+            >>> box.rotate("x'", 30, about="center")  # tilt the box around its own x' axis
+        """
+        if isinstance(axis, str) and axis.endswith("'"):
+            local_axes = {"x'": 0, "y'": 1, "z'": 2}
+            if axis not in local_axes:
+                raise ValueError(f'Unknown local axis {axis!r}; use "x\'", "y\'" or "z\'".')
+            axis = self.axes[local_axes[axis]]
+        super().rotate(axis, angle, in_degrees, about=about)
 
     def update_geometry(self):
         pass
-
-    def generate_axes(self) -> list[BaseAxis]:
-        """
-        Generate a set of axes for the shape centered at its origin.
-        """
-        axes = []
-        for name, axis in zip("xyz", np.eye(3), strict=True):
-            axes.append(BaseAxis(axis, self.center, label=f"{name}'"))
-        return axes
 
     def __repr__(self):
         return f"{self.__class__.__name__} at {self.center} with vertices {self.vertices}"
@@ -599,22 +658,16 @@ class BasePolygon(BaseShape):
     Represents a 2D (planar) polygon in 3D space. The polygon is defined by its vertices.
     """
 
-    def __init__(
-        self,
-        position: np.ndarray,
-        vertices: np.ndarray | None = None,
-        anchor: str = "center",
-    ):
-        super().__init__(position, dimensions=None, vertices=vertices, anchor=anchor)
-
-        self._vertices = self.calc_initial_vertices(vertices) if vertices is not None else []
-        self._vertices = self._interpret_position(self._vertices, self.dimensions, self.anchor)
-
-    def calc_initial_vertices(self, vertices) -> np.array:
+    def __init__(self, position: np.ndarray, vertices: np.ndarray):
         """
-        Calculates the vertices of the polygon.
+        Args:
+            position (array-like): Where the polygon's local origin is placed.
+            vertices (array-like): The corner points, relative to ``position``.
         """
-        return vertices
+        super().__init__(position, vertices=vertices)
+
+    def calc_initial_vertices(self) -> np.ndarray:
+        raise ValueError("A polygon needs explicit vertices.")
 
     @property
     def faces(self) -> np.array:
@@ -643,15 +696,14 @@ class BasePolygon(BaseShape):
 
 
 class BaseRectangle(BaseShape):
-    def calc_initial_vertices(self, vertices=None) -> np.ndarray:
-        x, y, z = self.center
+    def calc_initial_vertices(self) -> np.ndarray:
         width, length = self.dimensions
         return np.array(
             [
-                [x - width / 2, y - length / 2, z],
-                [x + width / 2, y - length / 2, z],
-                [x + width / 2, y + length / 2, z],
-                [x - width / 2, y + length / 2, z],
+                [-width / 2, -length / 2, 0],
+                [width / 2, -length / 2, 0],
+                [width / 2, length / 2, 0],
+                [-width / 2, length / 2, 0],
             ]
         )
 
@@ -679,16 +731,9 @@ class BaseRectangle(BaseShape):
 
 
 class BaseCircle(BaseShape):
-    def calc_initial_vertices(self, vertices=None) -> np.ndarray:
-        x, y, z = self.center
+    def calc_initial_vertices(self) -> np.ndarray:
         radius = self.dimensions[0]
-        n = 16  # Number of vertices
-        theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
-        vertices = np.zeros((n, 3))
-        vertices[:, 0] = x + radius * np.cos(theta)
-        vertices[:, 1] = y + radius * np.sin(theta)
-        vertices[:, 2] = z
-        return vertices
+        return ring(radius, z=0)
 
     @property
     def faces(self) -> np.ndarray:
@@ -713,19 +758,18 @@ class BaseCircle(BaseShape):
 
 
 class BaseBox(BaseShape):
-    def calc_initial_vertices(self, vertices=None) -> np.ndarray:
-        x, y, z = self.center
+    def calc_initial_vertices(self) -> np.ndarray:
         width, length, height = self.dimensions
         return np.array(
             [
-                [x - width / 2, y - length / 2, z - height / 2],
-                [x + width / 2, y - length / 2, z - height / 2],
-                [x + width / 2, y + length / 2, z - height / 2],
-                [x - width / 2, y + length / 2, z - height / 2],
-                [x - width / 2, y - length / 2, z + height / 2],
-                [x + width / 2, y - length / 2, z + height / 2],
-                [x + width / 2, y + length / 2, z + height / 2],
-                [x - width / 2, y + length / 2, z + height / 2],
+                [-width / 2, -length / 2, -height / 2],
+                [width / 2, -length / 2, -height / 2],
+                [width / 2, length / 2, -height / 2],
+                [-width / 2, length / 2, -height / 2],
+                [-width / 2, -length / 2, height / 2],
+                [width / 2, -length / 2, height / 2],
+                [width / 2, length / 2, height / 2],
+                [-width / 2, length / 2, height / 2],
             ]
         )
 
@@ -766,18 +810,10 @@ class BaseBox(BaseShape):
 
 
 class BaseCylinder(BaseShape):
-    def calc_initial_vertices(self, vertices=None) -> np.ndarray:
-        x, y, z = self.center
+    def calc_initial_vertices(self) -> np.ndarray:
+        """Bottom ring at the local origin, top ring at z' = height."""
         radius, height = self.dimensions
-        n = 16  # Number of vertices
-        theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
-        vertices = np.zeros((n, 3))
-        vertices[:, 0] = x + radius * np.cos(theta)
-        vertices[:, 1] = y + radius * np.sin(theta)
-        vertices[:, 2] = z
-        vertices = np.vstack([vertices, vertices + [0, 0, height]])
-
-        return vertices
+        return np.vstack([ring(radius, z=0), ring(radius, z=height)])
 
     @property
     def faces(self) -> list:
@@ -819,22 +855,10 @@ class BaseCylinder(BaseShape):
 
 
 class BaseCone(BaseCylinder):
-    def calc_initial_vertices(self, vertices=None) -> np.ndarray:
-        x, y, z = self.center
+    def calc_initial_vertices(self) -> np.ndarray:
+        """Bottom ring at the local origin, top ring at z' = height."""
         lower_radius, upper_radius, height = self.dimensions
-        n = 16  # Number of vertices
-        theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
-        vertices_bottom, vertices_top = np.zeros((n, 3)), np.zeros((n, 3))
-        vertices_bottom[:, 0] = x + lower_radius * np.cos(theta)
-        vertices_bottom[:, 1] = y + lower_radius * np.sin(theta)
-        vertices_bottom[:, 2] = z
-        vertices_top[:, 0] = x + upper_radius * np.cos(theta)
-        vertices_top[:, 1] = y + upper_radius * np.sin(theta)
-        vertices_top[:, 2] = z + height
-
-        vertices = np.vstack([vertices_bottom, vertices_top])
-
-        return vertices
+        return np.vstack([ring(lower_radius, z=0), ring(upper_radius, z=height)])
 
     def __repr__(self) -> str:
         lower_radius, upper_radius, height = self.dimensions

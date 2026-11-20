@@ -23,7 +23,6 @@ class MplPoly(BasePolygon):
         self.ax = ax
         self.color = color
         self.alpha = alpha
-        self.rotation_matrix = np.eye(4)
 
         if draw:
             self._draw()
@@ -43,7 +42,6 @@ class MplSurface(BaseRectangle):
         self.ax = ax
         self.color = color
         self.alpha = alpha
-        self.rotation_matrix = np.eye(4)
 
         if draw:
             self._draw()
@@ -64,7 +62,6 @@ class MplBox(BaseBox):
 
         self.color = color
         self.alpha = alpha
-        self.rotation_matrix = np.eye(4)
 
         if draw:
             self._draw()
@@ -173,7 +170,6 @@ class MplCylinder(BaseCylinder):
         self.face_colors = color
         self.edge_colors = "grey"
         self.alpha = alpha
-        self.rotation_matrix = np.eye(4)
 
         if draw:
             self._draw()
@@ -224,7 +220,6 @@ class MplCone(BaseCone, MplCylinder):
         self.face_colors = color
         self.edge_colors = "grey"
         self.alpha = alpha
-        self.rotation_matrix = np.eye(4)
 
         if draw:
             self._draw()

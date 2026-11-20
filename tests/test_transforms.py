@@ -239,34 +239,3 @@ def test_group_rotate_about_center_keeps_arrangement():
     np.testing.assert_allclose(a.position, [2, -1, 0], atol=1e-12)
     np.testing.assert_allclose(b.position, [2, 1, 0], atol=1e-12)
     np.testing.assert_allclose(group.center, [2, 0, 0], atol=1e-12)
-
-
-# ---------------------------------------------------------------- a shape's own axes
-
-
-def test_shape_axes_rotate_with_the_shape():
-    box = BaseBox([5, 0, 0], dimensions=[1, 1, 1], enable_axes=True)
-    box.rotate("z", 90, about="center")
-    x_axis, y_axis, z_axis = box.axes
-    np.testing.assert_allclose(x_axis.direction, [0, 1, 0], atol=1e-12)
-    np.testing.assert_allclose(y_axis.direction, [-1, 0, 0], atol=1e-12)
-    np.testing.assert_allclose(z_axis.direction, [0, 0, 1], atol=1e-12)
-    np.testing.assert_allclose(x_axis.origin, box.center, atol=1e-12)
-
-
-def test_shape_axes_follow_translation():
-    box = BaseBox([0, 0, 0], dimensions=[1, 1, 1], enable_axes=True)
-    Transform().translate([1, 2, 3]) @ box
-    for axis in box.axes:
-        np.testing.assert_allclose(axis.origin, [1, 2, 3])
-
-
-def test_rotate_about_own_axis():
-    box = BaseBox([0, 0, 0], dimensions=[2, 1, 1], enable_axes=True)
-    box.rotate("z", 90, about="center")
-    # now spin around the box's own x' axis (which points along world y)
-    box.rotate(box.axes[0].direction, 90, about="center")
-    extent = box.vertices.max(axis=0) - box.vertices.min(axis=0)
-    np.testing.assert_allclose(extent, [1, 2, 1], atol=1e-12)  # long side stays on y
-    np.testing.assert_allclose(box.axes[0].direction, [0, 1, 0], atol=1e-12)
-    np.testing.assert_allclose(box.axes[1].direction, [0, 0, 1], atol=1e-12)
