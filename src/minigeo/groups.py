@@ -1,6 +1,6 @@
 import numpy as np
 
-from .geometry import BaseGeometry, Transform
+from .geometry import BaseGeometry, Transform, resolve_pivot
 
 
 class GeometryGroup:
@@ -11,7 +11,7 @@ class GeometryGroup:
         Args:
             geometries (list[BaseGeometry] | None): Optional starting list of geometries.
         """
-        self.geometries = geometries if geometries is not None else []
+        self.geometries = list(geometries) if geometries is not None else []
 
     def add(self, geometry: BaseGeometry) -> None:
         """Add a geometry object to the group."""
@@ -53,19 +53,24 @@ class GeometryGroup:
         for geometry in self.geometries:
             geometry.update_geometry()
 
-    def deprecate_apply_transform(self, transform: Transform) -> None:
-        """
-        Apply a given Transform to all geometries in the group relative to the group's center.
-        This ensures that their relative positioning is preserved.
-
-        Args:
-            transform (Transform): A transform to apply.
-        """
-        group_center = self.center
+    def apply_transform(self, transform: Transform) -> None:
+        """Apply a transform to every member, so each keeps its own state (e.g. center) in sync."""
         for geometry in self.geometries:
-            # Move vertices to group-relative coordinates
-            rel_vertices = geometry.vertices - group_center
-            # Transform relative coordinates
-            new_vertices = transform.apply_to_vertices(rel_vertices) + group_center
-            geometry.vertices = new_vertices
-            geometry.update_geometry()
+            geometry.apply_transform(transform)
+
+    def rotate(
+        self,
+        axis: str | np.ndarray,
+        angle: float,
+        in_degrees: bool = True,
+        *,
+        about: np.ndarray | str | None = None,
+    ) -> None:
+        """
+        Rotate all members together, like :meth:`BaseGeometry.rotate`.
+
+        ``about="center"`` uses the group's center, so the members keep their arrangement
+        and the group spins in place.
+        """
+        pivot = resolve_pivot(about, self)
+        self.apply_transform(Transform().rotate(axis, angle, in_degrees, about=pivot))

@@ -44,6 +44,20 @@ def rotate_arbitrary_vector_matrix(
     return rotation_mat
 
 
+def resolve_pivot(about: np.ndarray | str | None, owner) -> np.ndarray | None:
+    """
+    Turn the ``about`` argument of ``rotate`` into a point.
+
+    ``None`` stays ``None`` (rotate about the origin), ``"center"`` becomes ``owner.center``,
+    and anything else is treated as a point.
+    """
+    if isinstance(about, str):
+        if about != "center":
+            raise ValueError(f"Unknown pivot {about!r}; use 'center' or a point.")
+        return owner.center
+    return about
+
+
 class Transform:
     """
     Represents an affine transformation in 3D. The transformation is represented by a 4x4 matrix (homogenous).
@@ -111,14 +125,17 @@ class Transform:
 
     def shear(self, factors: np.ndarray) -> Transform:
         """
-        Applies shearing along each axis.
+        Applies shearing in the xy and xz planes.
 
         Args:
-            factors (np.ndarray): A 3-element array for shearing factors.
+            factors (np.ndarray): A 4-element array ``(xy, yx, xz, zx)``, where e.g. ``xy``
+                is how much x is shifted per unit of y.
 
         Returns:
             Transform: Self to allow method chaining.
         """
+        if len(factors) != 4:
+            raise ValueError(f"shear expects 4 factors (xy, yx, xz, zx), got {len(factors)}")
         S = np.eye(4)
         S[0, 1], S[1, 0] = factors[0], factors[1]
         S[0, 2], S[2, 0] = factors[2], factors[3]
@@ -206,20 +223,39 @@ class Transform:
         self.matrix = R @ self.matrix
         return self
 
-    def rotate(self, axis: str | np.ndarray, angle: float, in_degrees: bool = True) -> Transform:
+    def rotate(
+        self,
+        axis: str | np.ndarray,
+        angle: float,
+        in_degrees: bool = True,
+        *,
+        about: np.ndarray | None = None,
+    ) -> Transform:
         """
         Rotates around a specified axis.
 
+        Without ``about`` the rotation axis passes through the origin. With ``about``, it
+        passes through that point instead: the point is moved to the origin, the rotation
+        is applied, and the point is moved back.
+
         Args:
-            axis (str or np.ndarray): The axis to rotate around ('x', 'y', 'z') or a 1D numpy array.
+            axis (str or array-like): The axis direction ('x', 'y', 'z') or a direction vector.
             angle (float): The rotation angle.
             in_degrees (bool): If True, converts degrees to radians.
+            about (array-like, optional): A point the rotation axis passes through.
 
         Returns:
             Transform: Self to allow method chaining.
+
+        Example:
+            >>> Transform().rotate("z", 90, about=[1, 0, 0])  # spin around the line x=1, y=0
         """
-        if isinstance(axis, np.ndarray):
-            self.rotate_arbitrary(axis, angle, in_degrees)
+        if about is not None:
+            pivot = np.asarray(about, dtype=float)
+            return self.translate(-pivot).rotate(axis, angle, in_degrees).translate(pivot)
+
+        if not isinstance(axis, str):
+            self.rotate_arbitrary(np.asarray(axis, dtype=float), angle, in_degrees)
         elif axis.lower() == "x":
             self.rotate_x(angle, in_degrees)
         elif axis.lower() == "y":
@@ -230,35 +266,32 @@ class Transform:
             raise ValueError("Invalid axis. Choose from 'x', 'y', or 'z' or provide a rotation axis vector.")
         return self
 
-    def apply(self, other: BaseGeometry, inplace=True) -> BaseGeometry:
+    def apply(self, other: BaseGeometry) -> BaseGeometry:
         """
-        Applies the transform to a geometry object.
+        Applies the transform to a geometry object (in place).
 
         Args:
-            other (BaseGeometry): The geometry object to apply the transform to.
+            other (BaseGeometry): The geometry (or group) to transform.
 
+        Returns:
+            The same object, so calls can be chained.
         """
-        # TODO: Think about the inplace parameter. Should we return a copy?
+        if not hasattr(other, "apply_transform"):
+            raise TypeError(f"Cannot apply a Transform to {type(other).__name__}.")
+        other.apply_transform(self)
+        return other
 
-        if not hasattr(other, "vertices"):
-            raise TypeError("Transform can only be applied to BaseGeometry instances.")
-
-        new_vertices = self.apply_to_vertices(other.vertices)
-        other.vertices = new_vertices
-
-        if hasattr(other, "_center"):
-            other._center = self.apply_to_vertex(other._center)
-
-        other.update_geometry()
-
-    def __matmul__(self, other: BaseGeometry) -> BaseGeometry:
+    def __matmul__(self, other: Transform | BaseGeometry) -> Transform | BaseGeometry:
         """
-        Overload the @ operator to apply the transform to a shape.
+        ``t1 @ t2`` composes two transforms into a new one (``t2`` is applied first).
+        ``t @ shape`` applies the transform to the shape in place and returns it.
         """
-
-        # TODO: Think about this interface, here we should probably return a new object.
-        # But using @= as in-place operation is also strange as the transform is not modified but applied.
-        self.apply(other)
+        # TODO: Think about whether `t @ shape` should return a transformed copy instead.
+        if isinstance(other, Transform):
+            composed = Transform()
+            composed.matrix = self.matrix @ other.matrix
+            return composed
+        return self.apply(other)
 
 
 class BaseGeometry(ABC):
@@ -276,13 +309,39 @@ class BaseGeometry(ABC):
     def vertices(self, value: np.ndarray):
         """Set the vertices of the geometry."""
 
-    def rotate(self, axis: str | np.ndarray, angle: float, in_degrees: bool = True):
-        """
-        Rotate the geometry around the given axis.
-        """
-        transform = Transform().rotate(axis, angle, in_degrees)
+    @property
+    def center(self) -> np.ndarray:
+        """The mean of all vertices. Shapes override this with their defined center."""
+        return self.vertices.mean(axis=0)
+
+    def apply_transform(self, transform: Transform) -> None:
+        """Transform all vertices in place. Subclasses extend this to update derived state."""
         self.vertices = transform.apply_to_vertices(self.vertices)
         self.update_geometry()
+
+    def rotate(
+        self,
+        axis: str | np.ndarray,
+        angle: float,
+        in_degrees: bool = True,
+        *,
+        about: np.ndarray | str | None = None,
+    ) -> None:
+        """
+        Rotate the geometry in place.
+
+        Args:
+            axis (str or array-like): The axis direction ('x', 'y', 'z') or a direction vector.
+            angle (float): The rotation angle.
+            in_degrees (bool): If True, the angle is in degrees, else in radians.
+            about (array-like or "center", optional): A point the rotation axis passes through.
+                ``"center"`` uses the geometry's own center. Default: the origin.
+
+        Example:
+            >>> box.rotate("z", 45, about="center")  # spin the box in place
+        """
+        pivot = resolve_pivot(about, self)
+        self.apply_transform(Transform().rotate(axis, angle, in_degrees, about=pivot))
 
     def update_geometry(self) -> None:  # noqa: B027 - optional hook, empty by design
         """
@@ -382,7 +441,6 @@ class BaseAxis(BaseGeometry):
         if norm:
             self.direction = self.direction / norm
         self.label = label if label is not None else ""
-        self.transform = Transform()
         self._vertices = self.calc_initial_vertices()
 
     def calc_initial_vertices(self) -> np.ndarray:
@@ -401,7 +459,12 @@ class BaseAxis(BaseGeometry):
 
     @vertices.setter
     def vertices(self, value: np.ndarray):
-        self._vertices = value
+        """Set the endpoints; origin and direction are updated to match."""
+        self._vertices = np.asarray(value)
+        self.origin = self._vertices[0]
+        vec = self._vertices[1] - self._vertices[0]
+        norm = np.linalg.norm(vec)
+        self.direction = vec / norm if norm else vec
 
     @property
     def edges(self) -> np.ndarray:
@@ -409,27 +472,6 @@ class BaseAxis(BaseGeometry):
         For an axis, the edge is defined by the line connecting its two endpoints.
         """
         return self.vertices
-
-    def apply_transform(self, transform: Transform):
-        """
-        Apply a transformation to the axis endpoints.
-        Updates the origin and the direction accordingly.
-        """
-        new_vertices = transform.apply_to_vertices(self.vertices)
-        self._vertices = new_vertices
-        self.origin = new_vertices[0]
-        vec = new_vertices[1] - new_vertices[0]
-        norm = np.linalg.norm(vec)
-        self.direction = vec / norm if norm else vec
-        self.update_geometry()
-
-    def rotate(self, axis: str | np.ndarray, angle: float, in_degrees: bool = True):
-        """
-        Rotate the axis around the given axis.
-        """
-        self.transform.rotate(axis, angle, in_degrees)
-        self.apply_transform(self.transform)
-        self.transform = Transform()  # Reset the transformation matrix
 
     def update_geometry(self):
         """
@@ -498,8 +540,11 @@ class BaseShape(BaseGeometry):
 
     @center.setter
     def center(self, value):
-        # TODO: When the center changes we need to update the vertices.
+        """Move the shape so that its center ends up at ``value``."""
+        value = np.asarray(value, dtype=float)
+        self._vertices = self.vertices + (value - self._center)
         self._center = value
+        self.update_geometry()
 
     @abstractmethod
     def calc_initial_vertices(self, vertices) -> np.array:
@@ -526,19 +571,12 @@ class BaseShape(BaseGeometry):
         """
         raise NotImplementedError("Subclasses must implement the edges property.")
 
-    def rotate(self, axis: str | np.ndarray, angle: float, in_degrees: bool = True) -> None:
-        """
-        Rotate the shape around a specified axis.
-
-        Args:
-            axis (str or np.ndarray): The axis to rotate around ('x', 'y', 'z') or a 1D numpy array.
-            angle (float): The rotation angle.
-            in_degrees (bool): If True, the angle is in degrees. If False, the angle is in radians.
-        """
-        transform = Transform().rotate(axis, angle, in_degrees)
-        self.vertices = transform.apply_to_vertices(self.vertices)
-        self._center = transform.apply_to_vertices(self.center)
-        self.update_geometry()
+    def apply_transform(self, transform: Transform) -> None:
+        """Transform the vertices and keep the center and the shape's own axes in sync."""
+        self._center = transform.apply_to_vertex(self._center)
+        for axis in self.axes or []:
+            axis.apply_transform(transform)
+        super().apply_transform(transform)
 
     def update_geometry(self):
         pass
@@ -548,8 +586,8 @@ class BaseShape(BaseGeometry):
         Generate a set of axes for the shape centered at its origin.
         """
         axes = []
-        for axis in np.eye(3):
-            axes.append(BaseAxis(axis, self.center, label=f"{axis} axis"))
+        for name, axis in zip("xyz", np.eye(3), strict=True):
+            axes.append(BaseAxis(axis, self.center, label=f"{name}'"))
         return axes
 
     def __repr__(self):
@@ -753,21 +791,23 @@ class BaseCylinder(BaseShape):
         return np.array([[v[i], v[(i + 1) % n], v[n + (i + 1) % n], v[n + i]] for i in range(n)])
 
     @property
-    def top_faces(self) -> np.ndarray:
-        return np.array([[self.vertices[i] for i in range(len(self.vertices) // 2)]])
+    def bottom_faces(self) -> np.ndarray:
+        n = len(self.vertices) // 2
+        return self.vertices[np.newaxis, :n]
 
     @property
-    def bottom_faces(self) -> np.ndarray:
-        return np.array([[self.vertices[i] for i in range(len(self.vertices) // 2, len(self.vertices))]])
+    def top_faces(self) -> np.ndarray:
+        n = len(self.vertices) // 2
+        return self.vertices[np.newaxis, n:]
 
     @property
     def edges(self) -> np.ndarray:
-        return np.array(
-            [
-                [self.vertices[i], self.vertices[(i + 1) % len(self.vertices)]]
-                for i in range(len(self.vertices))
-            ]
-        )
+        """The edges of the bottom ring followed by the edges of the top ring."""
+        n = len(self.vertices) // 2
+        v = self.vertices
+        bottom = [[v[i], v[(i + 1) % n]] for i in range(n)]
+        top = [[v[n + i], v[n + (i + 1) % n]] for i in range(n)]
+        return np.array(bottom + top)
 
     def update_geometry(self) -> None:
         pass
@@ -795,3 +835,10 @@ class BaseCone(BaseCylinder):
         vertices = np.vstack([vertices_bottom, vertices_top])
 
         return vertices
+
+    def __repr__(self) -> str:
+        lower_radius, upper_radius, height = self.dimensions
+        return (
+            f"BaseCone at {self.center} with radii {lower_radius} (bottom), "
+            f"{upper_radius} (top) and height {height}"
+        )
