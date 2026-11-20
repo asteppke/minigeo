@@ -96,15 +96,18 @@ class Angle(Geometry):
 
     @property
     def radians(self) -> float:
+        """The size of the angle in radians, from 0 to pi."""
         u, w = self.rays
         return float(np.arccos(np.clip(np.dot(u, w), -1, 1)))
 
     @property
     def degrees(self) -> float:
+        """The size of the angle in degrees, from 0 to 180."""
         return float(np.degrees(self.radians))
 
     @property
     def is_right(self) -> bool:
+        """Whether this is a right angle (90 degrees)."""
         return abs(self.degrees - 90) < 1e-6
 
     def _point_at(self, fraction: float, distance: float) -> np.ndarray:
@@ -204,6 +207,7 @@ class Dimension(Geometry):
 
     @property
     def length(self) -> float:
+        """The measured distance."""
         return float(np.linalg.norm(self.end - self.start))
 
     @property

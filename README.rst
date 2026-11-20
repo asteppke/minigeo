@@ -1,6 +1,9 @@
 .. image:: https://github.com/asteppke/minigeo/actions/workflows/python-app.yml/badge.svg
    :alt: pytest
    :target: https://github.com/asteppke/minigeo/actions/workflows/python-app.yml
+.. image:: https://readthedocs.org/projects/minigeo/badge/?version=latest
+   :alt: Documentation Status
+   :target: https://minigeo.readthedocs.io/en/latest/readme.html
 .. image:: https://mybinder.org/badge_logo.svg
    :alt: Try it on Binder
    :target: https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2Fgetting_started.ipynb
