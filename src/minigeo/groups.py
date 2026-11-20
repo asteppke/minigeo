@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import numpy as np
 
-from .geometry import BaseGeometry, Transform, resolve_pivot
+from .geometry import BaseGeometry, Transform, point_in_bounding_box, resolve_pivot
 
 
 class GeometryGroup:
@@ -24,12 +26,13 @@ class GeometryGroup:
     @property
     def center(self) -> np.ndarray:
         """
-        Compute the group’s center as the average of the individual geometry centers.
+        The middle of the group's bounding box, the same point as ``group.anchor("center")``.
+
+        An empty group has its center at the origin.
         """
         if not self.geometries:
             return np.zeros(3)
-        centers = np.array([g.center for g in self.geometries])
-        return np.mean(centers, axis=0)
+        return self.anchor("center")
 
     @property
     def vertices(self) -> np.ndarray:
@@ -52,6 +55,27 @@ class GeometryGroup:
         """Update the geometry of the group."""
         for geometry in self.geometries:
             geometry.update_geometry()
+
+    def anchor(self, name: str | np.ndarray = "center") -> np.ndarray:
+        """
+        Return a named point on the group's bounding box, in world coordinates.
+
+        The names are the same as for shapes (``"top"``, ``"bottom front left"``, ...), but
+        since a group has no axes of its own they refer to the world axes:
+        left/right is x, front/back is y and bottom/top is z.
+
+        Example:
+            >>> robot.place("bottom", at=[0, 0, 0])  # stand the whole group on the floor
+        """
+        if not self.geometries:
+            raise ValueError("An empty group has no anchors.")
+        return point_in_bounding_box(self.vertices, name)
+
+    def place(self, anchor: str | np.ndarray, at: np.ndarray) -> GeometryGroup:
+        """Move all members together (without turning) so that the group's ``anchor`` ends up at ``at``."""
+        offset = np.asarray(at, dtype=float) - self.anchor(anchor)
+        self.apply_transform(Transform().translate(offset))
+        return self
 
     def apply_transform(self, transform: Transform) -> None:
         """Apply a transform to every member, so each keeps its own state (e.g. center) in sync."""

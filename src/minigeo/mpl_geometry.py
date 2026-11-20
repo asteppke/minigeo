@@ -13,7 +13,9 @@ class MplDrawable(Protocol):
     Protocol for drawable objects using Matplotlib.
     """
 
-    def _draw(self) -> None: ...
+    def draw(self) -> None:
+        """Add the object to its axes. Called on creation unless ``draw=False`` is passed."""
+        ...
 
 
 class MplPoly(BasePolygon):
@@ -25,9 +27,9 @@ class MplPoly(BasePolygon):
         self.alpha = alpha
 
         if draw:
-            self._draw()
+            self.draw()
 
-    def _draw(self) -> None:
+    def draw(self) -> None:
         self.poly = Poly3DCollection(self.faces, facecolors=self.color, edgecolors="grey", alpha=self.alpha)
         self.ax.add_collection3d(self.poly)
 
@@ -44,9 +46,9 @@ class MplSurface(BaseRectangle):
         self.alpha = alpha
 
         if draw:
-            self._draw()
+            self.draw()
 
-    def _draw(self) -> None:
+    def draw(self) -> None:
         self.poly = Poly3DCollection(self.faces, facecolors=self.color, edgecolors="grey", alpha=self.alpha)
         self.ax.add_collection3d(self.poly)
 
@@ -55,8 +57,8 @@ class MplSurface(BaseRectangle):
 
 
 class MplBox(BaseBox):
-    def __init__(self, ax, center, dimensions, color="C0", alpha=1, draw=True):
-        super().__init__(center, dimensions)
+    def __init__(self, ax, center, dimensions, color="C0", alpha=1, draw=True, anchor=None):
+        super().__init__(center, dimensions, anchor=anchor)
 
         self.ax = ax
 
@@ -64,9 +66,9 @@ class MplBox(BaseBox):
         self.alpha = alpha
 
         if draw:
-            self._draw()
+            self.draw()
 
-    def _draw(self) -> None:
+    def draw(self) -> None:
         self.poly = Poly3DCollection(self.faces, facecolors=self.color, edgecolors="grey", alpha=self.alpha)
         self.ax.add_collection3d(self.poly)
 
@@ -86,9 +88,9 @@ class MplCube(MplBox):
         super().__init__(ax, center, (size, size, size), color="white", alpha=alpha, draw=False)
         self.face_colors = list(face_colors)
         self.edge_colors = ["gray"] * len(face_colors)
-        self._draw()
+        self.draw()
 
-    def _draw(self) -> None:
+    def draw(self) -> None:
         self.poly = Poly3DCollection(
             self.faces,
             facecolors=self.face_colors,
@@ -121,9 +123,9 @@ class MplLine(BaseLine):
         self.arrow_tip = arrow_tip
 
         if draw:
-            self._draw()
+            self.draw()
 
-    def _draw(self) -> None:
+    def draw(self) -> None:
         # Draw arrow tip if specified
         if self.arrow_tip:
             self.arrow = Arrow3D(
@@ -160,10 +162,10 @@ class MplLine(BaseLine):
 
 
 class MplCylinder(BaseCylinder):
-    def __init__(self, ax, center, dimensions: tuple, color="C0", alpha=1, draw=True):
+    def __init__(self, ax, center, dimensions: tuple, color="C0", alpha=1, draw=True, anchor=None):
         radius, height = dimensions
 
-        super().__init__(center, (radius, height))
+        super().__init__(center, (radius, height), anchor=anchor)
 
         self.ax = ax
         self.color = color
@@ -172,9 +174,9 @@ class MplCylinder(BaseCylinder):
         self.alpha = alpha
 
         if draw:
-            self._draw()
+            self.draw()
 
-    def _draw(self) -> None:
+    def draw(self) -> None:
         self.poly = Poly3DCollection(
             self.side_faces,
             facecolors=self.face_colors,
@@ -212,8 +214,10 @@ class MplCylinder(BaseCylinder):
 
 
 class MplCone(BaseCone, MplCylinder):
-    def __init__(self, ax, center, lower_radius, upper_radius, height, color="C0", alpha=1, draw=True):
-        BaseCone.__init__(self, center, (lower_radius, upper_radius, height))
+    def __init__(
+        self, ax, center, lower_radius, upper_radius, height, color="C0", alpha=1, draw=True, anchor=None
+    ):
+        BaseCone.__init__(self, center, (lower_radius, upper_radius, height), anchor=anchor)
 
         self.ax = ax
         self.color = color
@@ -222,7 +226,7 @@ class MplCone(BaseCone, MplCylinder):
         self.alpha = alpha
 
         if draw:
-            self._draw()
+            self.draw()
 
 
 class MplGroup(GeometryGroup):
@@ -240,10 +244,10 @@ class MplGroup(GeometryGroup):
         # this is at the moment only to have a similar interface
         self.ax = ax
         if draw:
-            self._draw()
+            self.draw()
 
-    def _draw(self):
+    def draw(self):
         # Call each geometry’s draw method
         for geom in self.geometries:
-            if hasattr(geom, "_draw"):
-                geom._draw()
+            if hasattr(geom, "draw"):
+                geom.draw()

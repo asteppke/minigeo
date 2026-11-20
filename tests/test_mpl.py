@@ -47,4 +47,31 @@ def test_drawing_property_repr():
 def test_cone_draws_and_transforms(ax):
     cone = mgeo.MplCone(ax, [0, 0, 0], lower_radius=0.5, upper_radius=0.2, height=1)
     Transform().translate([0, 0, 1]) @ cone
-    np.testing.assert_allclose(cone.center, [0, 0, 1])
+    np.testing.assert_allclose(cone.anchor("bottom"), [0, 0, 1])
+    np.testing.assert_allclose(cone.center, [0, 0, 1.5])  # the middle, half the height up
+
+
+def test_mpl_shapes_accept_an_anchor(ax):
+    box = mgeo.MplBox(ax, [0, 0, 0], (1, 1, 1), anchor="bottom")
+    cylinder = mgeo.MplCylinder(ax, [0, 0, 0], (0.5, 1), anchor="top")
+    cone = mgeo.MplCone(ax, [0, 0, 0], 0.5, 0.2, 1, anchor="center")
+    np.testing.assert_allclose(box.center, [0, 0, 0.5])
+    np.testing.assert_allclose(cylinder.center, [0, 0, -0.5])
+    np.testing.assert_allclose(cone.center, [0, 0, 0])
+
+
+def test_place_redraws(ax, monkeypatch):
+    box = mgeo.MplBox(ax, [0, 0, 0], (1, 1, 1))
+    received = []
+    monkeypatch.setattr(box.poly, "set_verts", received.append)
+    box.place("bottom", at=[0, 0, 2])
+    assert received and np.min(np.array(received[0])[..., 2]) == 2
+
+
+def test_line_and_group_place_redraw(ax):
+    line = mgeo.MplLine(ax, [0, 0, 0], [1, 0, 0])
+    arrow = mgeo.MplLine(ax, [0, 0, 0], [0, 1, 0], arrow_tip=True)
+    group = mgeo.MplGroup(ax, [line, arrow])
+    group.place("bottom front left", at=[1, 1, 1])
+    np.testing.assert_allclose(np.array(line.line.get_data_3d())[:, 0], [1, 1, 1])
+    np.testing.assert_allclose(np.array(arrow.arrow._verts3d)[:, 0], [1, 1, 1])

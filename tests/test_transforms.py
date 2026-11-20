@@ -126,8 +126,13 @@ def test_group_accepts_tuple_and_can_add():
 
 
 def test_group_center_with_lines_and_points():
+    # middle of the bounding box from x=0 to x=4, not the average of the member centers (1.5)
     group = GeometryGroup([BasePoint([0, 0, 0]), BaseLine([2, 0, 0], [4, 0, 0])])
-    np.testing.assert_allclose(group.center, [1.5, 0, 0])
+    np.testing.assert_allclose(group.center, [2, 0, 0])
+
+
+def test_empty_group_center_is_origin():
+    np.testing.assert_allclose(GeometryGroup().center, [0, 0, 0])
 
 
 def test_group_transform_moves_member_centers():

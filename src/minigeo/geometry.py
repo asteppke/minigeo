@@ -69,6 +69,10 @@ def split_rotation(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     Returns:
         (rotation, stretch): two 3x3 arrays with ``rotation @ stretch == matrix``.
     """
+    is_rotation = np.allclose(matrix.T @ matrix, np.eye(3)) and np.linalg.det(matrix) > 0
+    if is_rotation:
+        return matrix.copy(), np.eye(3)
+
     u, _, vt = np.linalg.svd(matrix)
     if np.linalg.det(u @ vt) < 0:
         # A mirroring map: keep the frame right-handed and leave the flip in the stretch.
@@ -314,6 +318,41 @@ class Transform:
         return self.apply(other)
 
 
+# TikZ's names for positions along a path, from 0 (start) to 1 (end).
+LINE_POSITIONS = {
+    "start": 0.0,
+    "very near start": 0.125,
+    "near start": 0.25,
+    "midway": 0.5,
+    "center": 0.5,
+    "near end": 0.75,
+    "very near end": 0.875,
+    "end": 1.0,
+}
+
+
+def line_position(anchor: str | float) -> float:
+    """
+    Translate a TikZ position name (e.g. ``"near end"``) or a number into a fraction of the way.
+
+    Example:
+        >>> line_position("near start")
+        0.25
+    """
+    if not isinstance(anchor, str):
+        return float(anchor)
+    name = " ".join(anchor.lower().replace("-", " ").replace("_", " ").split())
+    if name not in LINE_POSITIONS:
+        raise ValueError(f"Unknown line anchor {anchor!r}; use {', '.join(LINE_POSITIONS)} or a number.")
+    return LINE_POSITIONS[name]
+
+
+def point_on_segment(start: np.ndarray, end: np.ndarray, anchor: str | float) -> np.ndarray:
+    """Return the point ``anchor`` along the straight segment from ``start`` to ``end``."""
+    start, end = np.asarray(start, dtype=float), np.asarray(end, dtype=float)
+    return start + line_position(anchor) * (end - start)
+
+
 class BaseGeometry(ABC):
     """
     Base class for all geometry classes.
@@ -362,6 +401,29 @@ class BaseGeometry(ABC):
         """
         pivot = resolve_pivot(about, self)
         self.apply_transform(Transform().rotate(axis, angle, in_degrees, about=pivot))
+
+    def anchor(self, name: str = "center") -> np.ndarray:
+        """
+        Return a named point of the geometry in world coordinates.
+
+        Every geometry has the ``"center"`` anchor; lines and shapes add their own names.
+        """
+        if isinstance(name, str) and name == "center":
+            return self.center
+        raise ValueError(f"{type(self).__name__} has no anchor {name!r}; only 'center'.")
+
+    def place(self, anchor: str | np.ndarray | float, at: np.ndarray) -> BaseGeometry:
+        """
+        Move the geometry (without turning it) so that its ``anchor`` ends up at ``at``.
+
+        Returns the geometry itself, so it can be used right after creating it.
+
+        Example:
+            >>> lamp.place("bottom", at=table.anchor("top"))  # put the lamp on the table
+        """
+        offset = np.asarray(at, dtype=float) - self.anchor(anchor)
+        self.apply_transform(Transform().translate(offset))
+        return self
 
     def update_geometry(self) -> None:  # noqa: B027 - optional hook, empty by design
         """
@@ -433,6 +495,20 @@ class BaseLine(BaseGeometry):
     def edges(self) -> np.ndarray:
         return self.vertices
 
+    def anchor(self, name: str | float = "midway") -> np.ndarray:
+        """
+        Return a point along the line, named as in TikZ.
+
+        Args:
+            name: ``"start"``, ``"end"``, ``"midway"`` (or ``"center"``), ``"near start"``,
+                ``"near end"``, ``"very near start"``, ``"very near end"``, or a number
+                like TikZ's ``pos``: 0 is the start, 1 the end.
+
+        Example:
+            >>> line.anchor("near end")  # three quarters of the way along
+        """
+        return point_on_segment(self.start, self.end, name)
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__} from {self.start} to {self.end}"
 
@@ -493,6 +569,10 @@ class BaseAxis(BaseGeometry):
         """
         return self.vertices
 
+    def anchor(self, name: str | float = "midway") -> np.ndarray:
+        """Return a point along the axis segment; the same names as :meth:`BaseLine.anchor`."""
+        return point_on_segment(self.vertices[0], self.vertices[1], name)
+
     def update_geometry(self):
         """
         Hook for updating any drawn geometry of the axis.
@@ -507,6 +587,72 @@ def ring(radius: float, z: float, n: int = 16) -> np.ndarray:
     """Return ``n`` points on a horizontal circle of the given radius at height ``z``."""
     theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
     return np.column_stack([radius * np.cos(theta), radius * np.sin(theta), np.full(n, z)])
+
+
+# Each anchor word picks one side of the shape along one of its local axes.
+ANCHOR_WORDS = {
+    "left": (0, -1),
+    "right": (0, +1),
+    "front": (1, -1),
+    "back": (1, +1),
+    "bottom": (2, -1),
+    "top": (2, +1),
+}
+
+
+def anchor_direction(anchor: str | np.ndarray) -> np.ndarray:
+    """
+    Translate an anchor into a position within the shape's local bounding box.
+
+    The result has one entry per local axis: -1 is the low side, +1 the high side, 0 the middle.
+
+    Args:
+        anchor: Either ``"center"`` or a combination of the words left/right (x'),
+            front/back (y'), bottom/top (z') in any order, separated by spaces, ``-`` or ``_``,
+            e.g. ``"top"``, ``"top front"``, ``"bottom-back-left"``. Or three numbers, where
+            ``(0, 0, 0.5)`` is halfway between the center and the top.
+
+    Example:
+        >>> anchor_direction("top front left")
+        array([-1., -1.,  1.])
+    """
+    if not isinstance(anchor, str):
+        direction = np.asarray(anchor, dtype=float)
+        if direction.shape != (3,):
+            raise ValueError(f"A numeric anchor needs three values, got {anchor!r}.")
+        return direction
+
+    words = anchor.lower().replace("-", " ").replace("_", " ").split()
+    direction = np.zeros(3)
+    if words == ["center"]:
+        return direction
+
+    used_axes = set()
+    for word in words:
+        if word not in ANCHOR_WORDS:
+            raise ValueError(
+                f"Unknown anchor word {word!r} in {anchor!r}; use {', '.join(ANCHOR_WORDS)} or 'center'."
+            )
+        axis, side = ANCHOR_WORDS[word]
+        if axis in used_axes:
+            raise ValueError(f"Anchor {anchor!r} names the same axis twice.")
+        used_axes.add(axis)
+        direction[axis] = side
+    if not words:
+        raise ValueError("Empty anchor name.")
+    return direction
+
+
+def point_in_bounding_box(vertices: np.ndarray, anchor: str | np.ndarray) -> np.ndarray:
+    """
+    Return the anchor point on the axis-aligned bounding box of ``vertices``.
+
+    Example:
+        >>> point_in_bounding_box(box.local_vertices, "top")  # middle of the top face
+    """
+    low, high = vertices.min(axis=0), vertices.max(axis=0)
+    middle, half_size = (low + high) / 2, (high - low) / 2
+    return middle + anchor_direction(anchor) * half_size
 
 
 class BaseShape(BaseGeometry):
@@ -526,13 +672,21 @@ class BaseShape(BaseGeometry):
     Applying a transform updates the pose with its rotation and translation. Any scaling or
     shear is applied to the local vertices instead, so the shape deforms while its axes stay
     perpendicular.
+
+    Anchors (as in TikZ) name points on the shape's local bounding box: ``"top"`` is the middle
+    of the top face, ``"top front left"`` a corner, and so on (see :func:`anchor_direction`).
+    Seen from the front, x' points right, y' points away from you (to the back) and z' up.
     """
+
+    #: Which anchor ``position`` refers to when none is given. ``"center"`` means the middle.
+    default_anchor: str = "center"
 
     def __init__(
         self,
         position: np.ndarray | list,
         dimensions: np.ndarray | None = None,
         vertices: np.ndarray | None = None,
+        anchor: str | np.ndarray | None = None,
     ):
         """
         Initialize a shape at ``position`` from its dimensions or explicit vertices.
@@ -540,11 +694,18 @@ class BaseShape(BaseGeometry):
         The local axes x', y', z' initially line up with the world axes x, y, z.
 
         Args:
-            position (array-like): Where the local origin (the center) is placed.
+            position (array-like): Where the shape's ``anchor`` is placed.
             dimensions (array-like): The dimensions of the shape, e.g. [width, length, height]
                 for a box. Their meaning depends on the shape.
             vertices (array-like): Explicit vertices, relative to ``position``. If None, they are
                 calculated from the dimensions.
+            anchor (str or array-like): Which point of the shape ends up at ``position``,
+                e.g. ``"bottom"`` or ``"bottom front left"``. Defaults to ``default_anchor``.
+                Ignored for explicit ``vertices``, which are always relative to ``position``.
+
+        Example:
+            >>> table = BaseBox([0, 0, 0], dimensions=[2, 1, 0.1])
+            >>> cup = BaseCylinder(table.anchor("top"), dimensions=[0.1, 0.2])  # stands on the table
         """
         # TODO: think about a good way for the dimensions parameter. Either different keywords for
         # different shapes or a general approach where the dimensions are interpreted differently.
@@ -552,6 +713,11 @@ class BaseShape(BaseGeometry):
         self.pose = Transform().translate(position)
         local = self.calc_initial_vertices() if vertices is None else vertices
         self._local_vertices = np.asarray(local, dtype=float)
+
+        if vertices is None:
+            anchor = self.default_anchor if anchor is None else anchor
+            # No update_geometry() here: subclasses have not finished their setup yet.
+            self.pose.matrix[:3, 3] += position - self.anchor(anchor)
 
     @abstractmethod
     def calc_initial_vertices(self) -> np.ndarray:
@@ -574,6 +740,22 @@ class BaseShape(BaseGeometry):
     def axes(self) -> np.ndarray:
         """The local axes as rows ``[x', y', z']``: perpendicular unit vectors in world coordinates."""
         return self.pose.matrix[:3, :3].T.copy()
+
+    def anchor(self, name: str | np.ndarray = "center") -> np.ndarray:
+        """
+        Return a named point of the shape in world coordinates.
+
+        Anchors lie on the shape's local bounding box and move and turn with the shape.
+
+        Args:
+            name: ``"center"``, a combination of left/right, front/back, bottom/top
+                (e.g. ``"top front"``), or three numbers between -1 and 1 (see :func:`anchor_direction`).
+
+        Example:
+            >>> box.anchor("top")              # middle of the top face
+            >>> box.anchor("bottom front left")  # a corner
+        """
+        return self.pose.apply_to_vertex(point_in_bounding_box(self._local_vertices, name))
 
     @property
     def local_vertices(self) -> np.ndarray:
@@ -810,10 +992,12 @@ class BaseBox(BaseShape):
 
 
 class BaseCylinder(BaseShape):
+    #: ``position`` is the middle of the bottom face, so a cylinder stands on the given point.
+    default_anchor = "bottom"
+
     def calc_initial_vertices(self) -> np.ndarray:
-        """Bottom ring at the local origin, top ring at z' = height."""
         radius, height = self.dimensions
-        return np.vstack([ring(radius, z=0), ring(radius, z=height)])
+        return np.vstack([ring(radius, z=-height / 2), ring(radius, z=height / 2)])
 
     @property
     def faces(self) -> list:
@@ -856,9 +1040,8 @@ class BaseCylinder(BaseShape):
 
 class BaseCone(BaseCylinder):
     def calc_initial_vertices(self) -> np.ndarray:
-        """Bottom ring at the local origin, top ring at z' = height."""
         lower_radius, upper_radius, height = self.dimensions
-        return np.vstack([ring(lower_radius, z=0), ring(upper_radius, z=height)])
+        return np.vstack([ring(lower_radius, z=-height / 2), ring(upper_radius, z=height / 2)])
 
     def __repr__(self) -> str:
         lower_radius, upper_radius, height = self.dimensions

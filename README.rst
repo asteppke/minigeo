@@ -47,6 +47,42 @@ Examples
     [ 0.5  1.   1.5]]
 
 
+.. code-block::
+   :caption: Placing shapes with TikZ-style anchors
+
+   import minigeo.geometry as geo
+
+   table = geo.BaseBox([0, 0, 0], dimensions=[2, 1, 0.1], anchor="bottom")
+
+   # anchors are points on a shape: "top", "top front", "bottom back left", ...
+   cup = geo.BaseCylinder(table.anchor("top front left"), dimensions=[0.1, 0.2])
+
+   # or move an existing shape so that one of its anchors sits on a point
+   book = geo.BaseBox([0, 0, 0], dimensions=[0.5, 0.35, 0.08])
+   book.rotate("z", 20, about="center")
+   book.place("bottom", at=table.anchor("top"))
+
+Every shape has its own axes x', y', z' (``shape.axes``) that turn with it. Anchor words
+refer to these axes: left/right (x'), front/back (y'), bottom/top (z'). So after rotating
+a shape, ``shape.anchor("top")`` is still the middle of its own top face, and
+``shape.rotate("x'", 30, about="center")`` tilts it around its own x' axis.
+
+Lines use TikZ's position names (``"start"``, ``"near start"``, ``"midway"``, ``"near end"``,
+``"end"``, or a number between 0 and 1), and groups have the same anchors as shapes, taken
+from their bounding box along the world axes:
+
+.. code-block::
+
+   from minigeo.groups import GeometryGroup
+
+   connector = geo.BaseLine(table.anchor("right"), table.anchor("right") + [1, 0, 0])
+   label_at = connector.anchor("near end")
+
+   lamp = GeometryGroup([geo.BaseCylinder([0, 0, 0], dimensions=[0.05, 0.4]),
+                         geo.BaseCone([0, 0, 0.4], dimensions=[0.2, 0.1, 0.2])])
+   lamp.place("bottom", at=table.anchor("top back right"))
+
+
 Installation
 ------------
 Clone the repository and install it with the matplotlib backend:
