@@ -1,0 +1,4 @@
+# Environment for https://mybinder.org: minigeo from this repository with all backends,
+# plus ipympl for the live matplotlib animations in examples/animations.ipynb.
+.[all]
+ipympl

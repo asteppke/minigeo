@@ -206,14 +206,17 @@ class Vector(Line):
 
     @property
     def origin(self) -> np.ndarray:
+        """Where the arrow starts."""
         return np.asarray(self.start, dtype=float)
 
     @property
     def components(self) -> np.ndarray:
+        """The three components (from the origin to the tip)."""
         return np.asarray(self.end, dtype=float) - self.origin
 
     @property
     def length(self) -> float:
+        """The length of the vector."""
         return float(np.linalg.norm(self.components))
 
     @property

@@ -82,7 +82,8 @@ def animate(
         snapshots: The primitives of each frame, see :meth:`Scene.snapshots <minigeo.scene.Scene.snapshots>`.
         interval: Time between frames in milliseconds.
         repeat: Start again after the last frame.
-        Other arguments as in :func:`render`.
+
+    The other arguments are as in :func:`render`.
     """
     from matplotlib.animation import FuncAnimation
 

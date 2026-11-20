@@ -1,6 +1,12 @@
 .. image:: https://github.com/asteppke/minigeo/actions/workflows/python-app.yml/badge.svg
    :alt: pytest
    :target: https://github.com/asteppke/minigeo/actions/workflows/python-app.yml
+.. image:: https://mybinder.org/badge_logo.svg
+   :alt: Try it on Binder
+   :target: https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2Fgetting_started.ipynb
+.. image:: https://colab.research.google.com/assets/colab-badge.svg
+   :alt: Open in Colab
+   :target: https://colab.research.google.com/github/asteppke/minigeo/blob/main/examples/getting_started.ipynb
 
 
 =======
@@ -12,7 +18,7 @@ place boxes, cylinders, lines and axes relative to each other with named anchors
 the scene as an SVG vector image, with matplotlib, or interactively in the browser with plotly.
 It is meant for sketches and for understanding 3D geometry, readable first, fast second.
 
-.. image:: examples/minigeo.png
+.. image:: https://raw.githubusercontent.com/asteppke/minigeo/main/examples/minigeo.png
    :alt: A table with a cup, a book and a lamp, drawn as SVG
    :width: 500px
 
@@ -143,20 +149,42 @@ or all of them:
 
     pip install ".[all]"
 
-For development (tests and linting):
+For development (tests, linting and the documentation):
 
 .. code-block:: bash
 
-    pip install -e ".[dev]"
+    pip install -e ".[dev]" -r docs/requirements.txt
     pytest
     ruff check .
+    sphinx-build -b html docs docs/_build/html    # the API reference, from the docstrings
 
 Examples
 --------
-- ``examples/getting_started.ipynb``: a tour of geometry, transforms, anchors, scenes and the three backends.
-- ``examples/animations.ipynb``: a box turning around its own axis, animated with plotly and matplotlib.
-- ``examples/Cristallina.ipynb``: a sketch of an X-ray scattering experiment, with x pointing up.
-- ``examples/table_scene.py``: the scene from the picture above, built entirely with anchors.
+Try the examples in your browser, without installing anything: Binder starts a JupyterLab
+with everything installed (it takes a minute), Colab installs minigeo in the first cell.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 50 10 10
+
+   * - Notebook
+     - Shows
+     - Binder
+     - Colab
+   * - ``examples/getting_started.ipynb``
+     - geometry, transforms, anchors, scenes, the three backends, measuring
+     - `launch <https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2Fgetting_started.ipynb>`__
+     - `open <https://colab.research.google.com/github/asteppke/minigeo/blob/main/examples/getting_started.ipynb>`__
+   * - ``examples/animations.ipynb``
+     - a box turning around its own axis, with plotly and matplotlib
+     - `launch <https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2Fanimations.ipynb>`__
+     - `open <https://colab.research.google.com/github/asteppke/minigeo/blob/main/examples/animations.ipynb>`__
+   * - ``examples/Cristallina.ipynb``
+     - a sketch of an X-ray scattering experiment, with x pointing up
+     - `launch <https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2FCristallina.ipynb>`__
+     - `open <https://colab.research.google.com/github/asteppke/minigeo/blob/main/examples/Cristallina.ipynb>`__
+
+``examples/table_scene.py`` builds the scene from the picture above, entirely with anchors.
 
 Contributing
 ------------

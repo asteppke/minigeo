@@ -175,7 +175,8 @@ class Scene:
             colors: Colors of the three arrows and their labels.
             on_top: Paint the arrows over all faces in the SVG and matplotlib backends, so
                 they stay visible inside the shape. (Plotly always shows true depth.)
-            style, **style_fields: Further style, e.g. ``line_width=2``.
+            style: Further style for the arrows and labels.
+            **style_fields: Single style fields, e.g. ``line_width=2``.
 
         Example:
             >>> scene.add_frame(box)          # the box's own axes, turning with the box

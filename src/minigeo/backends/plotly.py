@@ -80,7 +80,8 @@ def animate(
     Args:
         snapshots: The primitives of each frame, see :meth:`Scene.snapshots <minigeo.scene.Scene.snapshots>`.
         interval: Time between frames in milliseconds.
-        Other arguments as in :func:`render`.
+
+    The other arguments are as in :func:`render`.
     """
     all_points = [p for snapshot in snapshots for p in snapshot]
     low, high = bounds(all_points)  # one fixed view for all frames, so nothing jumps
