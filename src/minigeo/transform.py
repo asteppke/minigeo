@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:  # only for type hints; avoids a circular import
-    from .geometry import BaseGeometry
+    from .geometry import Geometry
 
 
 def rotate_arbitrary_vector_matrix(
@@ -274,12 +274,12 @@ class Transform:
             raise ValueError("Invalid axis. Choose from 'x', 'y', or 'z' or provide a rotation axis vector.")
         return self
 
-    def apply(self, other: BaseGeometry) -> BaseGeometry:
+    def apply(self, other: Geometry) -> Geometry:
         """
         Applies the transform to a geometry object (in place).
 
         Args:
-            other (BaseGeometry): The geometry (or group) to transform.
+            other (Geometry): The geometry (or group) to transform.
 
         Returns:
             The same object, so calls can be chained.
@@ -289,7 +289,7 @@ class Transform:
         other.apply_transform(self)
         return other
 
-    def __matmul__(self, other: Transform | BaseGeometry) -> Transform | BaseGeometry:
+    def __matmul__(self, other: Transform | Geometry) -> Transform | Geometry:
         """
         ``t1 @ t2`` composes two transforms into a new one (``t2`` is applied first).
         ``t @ shape`` applies the transform to the shape in place and returns it.

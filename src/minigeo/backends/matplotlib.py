@@ -220,13 +220,19 @@ class DepthSorter:
         canvas.mpl_connect("button_release_event", on_release)
 
 
-def to_png(scene, *, size: float = 5, dpi: int = 100, **options) -> bytes:
-    """Render ``scene`` into PNG bytes, without pyplot (used for display in Jupyter)."""
+def to_figure(scene, *, size: float = 5, **options) -> Figure:
+    """Render ``scene`` into a new figure without pyplot, e.g. for saving to a file."""
     from matplotlib.backends.backend_agg import FigureCanvasAgg
 
     figure = Figure(figsize=(size, size))
     FigureCanvasAgg(figure)
     render(scene, figure.add_subplot(projection="3d"), **options)
+    return figure
+
+
+def to_png(scene, *, size: float = 5, dpi: int = 100, **options) -> bytes:
+    """Render ``scene`` into PNG bytes, without pyplot (used for display in Jupyter)."""
+    figure = to_figure(scene, size=size, **options)
     buffer = io.BytesIO()
     figure.savefig(buffer, format="png", dpi=dpi)
     return buffer.getvalue()

@@ -4,7 +4,7 @@ import numpy as np
 
 from minigeo import Scene
 from minigeo.depth import is_back_face, painter_order, view_direction
-from minigeo.geometry import BaseBox, BaseCylinder, BaseLine
+from minigeo.geometry import Box, Cylinder, Line
 from minigeo.render import Face, Label
 
 FROM_FRONT_ABOVE = view_direction(elev=30, azim=-60)
@@ -27,8 +27,8 @@ def test_view_direction():
 
 def test_order_is_a_permutation():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]))
-    scene.add(BaseCylinder([2, 0, 0], dimensions=[0.5, 1]))
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]))
+    scene.add(Cylinder([2, 0, 0], radius=0.5, height=1))
     primitives, order = order_of(scene)
     assert sorted(order) == list(range(len(primitives)))
 
@@ -36,10 +36,8 @@ def test_order_is_a_permutation():
 def test_small_object_on_a_large_table_is_drawn_after_the_tabletop():
     """Sorting by centers alone gets this wrong: the cup's center is behind the table's."""
     scene = Scene()
-    table = scene.add(BaseBox([0, 0, 0], dimensions=[4, 2, 0.1], anchor="top"), fill="brown")
-    scene.add(
-        BaseCylinder(table.anchor("top back left") + [0.3, -0.3, 0], dimensions=[0.1, 0.3]), fill="blue"
-    )
+    table = scene.add(Box([0, 0, 0], size=[4, 2, 0.1], anchor="top"), fill="brown")
+    scene.add(Cylinder(table.anchor("top back left") + [0.3, -0.3, 0], radius=0.1, height=0.3), fill="blue")
     primitives, order = order_of(scene)
     tabletop = position_in_order(
         primitives, order, lambda p: p.style.fill == "brown" and p.points[:, 2].min() > -1e-9
@@ -53,8 +51,8 @@ def test_small_object_on_a_large_table_is_drawn_after_the_tabletop():
 
 def test_box_behind_is_drawn_first():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), fill="near")
-    scene.add(BaseBox([-5, 5, 0], dimensions=[1, 1, 1]), fill="far")  # further from a viewer at azim -60
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), fill="near")
+    scene.add(Box([-5, 5, 0], size=[1, 1, 1]), fill="far")  # further from a viewer at azim -60
     primitives, order = order_of(scene)
     far = position_in_order(primitives, order, lambda p: p.style.fill == "far")
     near = position_in_order(primitives, order, lambda p: p.style.fill == "near")
@@ -63,15 +61,15 @@ def test_box_behind_is_drawn_first():
 
 def test_labels_come_last():
     scene = Scene()
-    scene.add(BaseLine([0, 0, 0], [1, 0, 0]), label="a")
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), label="b")
+    scene.add(Line([0, 0, 0], [1, 0, 0]), label="a")
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), label="b")
     primitives, order = order_of(scene)
     assert all(isinstance(primitives[i], Label) for i in order[-2:])
 
 
 def test_back_faces():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]))
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]))
     faces = [p for p in scene.primitives() if isinstance(p, Face)]
     from_above = np.array([0, 0, 1.0])
     hidden = [f for f in faces if is_back_face(f, from_above)]
@@ -81,7 +79,7 @@ def test_back_faces():
 
 def test_on_top_paths_come_after_faces_but_before_labels():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), label="box", frame=True)
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), label="box", frame=True)
     primitives, order = order_of(scene)
     kinds = [
         "label"

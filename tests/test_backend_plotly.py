@@ -5,7 +5,7 @@ import pytest
 
 from minigeo import Scene
 from minigeo.camera import Camera
-from minigeo.geometry import BaseAxis, BaseBox, BaseCylinder, BaseLine, BasePoint
+from minigeo.geometry import Axis, Box, Cylinder, Line, Point
 
 
 def traces(figure, kind):
@@ -14,7 +14,7 @@ def traces(figure, kind):
 
 def test_box_is_one_mesh_of_twelve_triangles():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), fill="red")
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), fill="red")
     (mesh,) = traces(scene.render("plotly"), "Mesh3d")
     assert len(mesh.i) == 12  # 6 square faces, 2 triangles each
     assert set(mesh.facecolor) == {"red"}
@@ -22,9 +22,9 @@ def test_box_is_one_mesh_of_twelve_triangles():
 
 def test_meshes_are_grouped_by_opacity():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), fill="red")
-    scene.add(BaseBox([2, 0, 0], dimensions=[1, 1, 1]), fill="C1")
-    scene.add(BaseBox([4, 0, 0], dimensions=[1, 1, 1]), opacity=0.4)
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), fill="red")
+    scene.add(Box([2, 0, 0], size=[1, 1, 1]), fill="C1")
+    scene.add(Box([4, 0, 0], size=[1, 1, 1]), opacity=0.4)
     meshes = traces(scene.render("plotly"), "Mesh3d")
     assert sorted(m.opacity for m in meshes) == [0.4, 1.0]
     opaque = next(m for m in meshes if m.opacity == 1)
@@ -33,23 +33,23 @@ def test_meshes_are_grouped_by_opacity():
 
 def test_shared_edges_are_drawn_once():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), stroke="black")
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), stroke="black")
     (outline,) = traces(scene.render("plotly"), "Scatter3d")
     assert list(outline.x).count(None) == 12  # 12 edges, each followed by a gap
 
 
 def test_cylinder_outline_has_only_the_rings():
     scene = Scene()
-    cylinder = scene.add(BaseCylinder([0, 0, 0], dimensions=[1, 2]), stroke="black")
+    cylinder = scene.add(Cylinder([0, 0, 0], radius=1, height=2), stroke="black")
     (outline,) = traces(scene.render("plotly"), "Scatter3d")
     assert list(outline.x).count(None) == len(cylinder.vertices)  # n edges per ring, 2 rings
 
 
 def test_lines_arrows_points_and_labels():
     scene = Scene()
-    scene.add(BaseLine([0, 0, 0], [1, 0, 0]), stroke="blue", dash="dashed", label="a", label_at="end")
-    scene.add(BaseAxis([0, 0, 1]), stroke="green")
-    scene.add(BasePoint([1, 1, 1]), fill="red")
+    scene.add(Line([0, 0, 0], [1, 0, 0]), stroke="blue", dash="dashed", label="a", label_at="end")
+    scene.add(Axis([0, 0, 1]), stroke="green")
+    scene.add(Point([1, 1, 1]), fill="red")
     figure = scene.render("plotly")
     lines = [t for t in traces(figure, "Scatter3d") if t.mode == "lines"]
     assert {t.line.dash for t in lines} == {"dash", "solid"}
@@ -65,7 +65,7 @@ def test_lines_arrows_points_and_labels():
 @pytest.mark.parametrize(("elev", "azim", "vertical"), [(30, -60, "z"), (20, 45, "x")])
 def test_camera_matches_the_other_backends(elev, azim, vertical):
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 2, 3]))
+    scene.add(Box([0, 0, 0], size=[1, 2, 3]))
     layout = scene.render("plotly", elev=elev, azim=azim, vertical_axis=vertical).layout.scene
     eye = np.array([layout.camera.eye.x, layout.camera.eye.y, layout.camera.eye.z])
     np.testing.assert_allclose(eye / np.linalg.norm(eye), Camera(elev, azim, vertical).toward_viewer)
@@ -76,7 +76,7 @@ def test_camera_matches_the_other_backends(elev, azim, vertical):
 
 def test_equal_scale_and_fixed_ranges():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[4, 2, 1]))
+    scene.add(Box([0, 0, 0], size=[4, 2, 1]))
     layout = scene.render("plotly").layout.scene
     spans = np.array([np.diff(axis.range)[0] for axis in (layout.xaxis, layout.yaxis, layout.zaxis)])
     ratio = np.array([layout.aspectratio.x, layout.aspectratio.y, layout.aspectratio.z])
@@ -87,7 +87,7 @@ def test_equal_scale_and_fixed_ranges():
 
 def test_hide_axes():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]))
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]))
     layout = scene.render("plotly", show_axes=False).layout.scene
     assert not layout.xaxis.visible and not layout.yaxis.visible and not layout.zaxis.visible
 

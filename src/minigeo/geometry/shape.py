@@ -8,7 +8,7 @@ import numpy as np
 
 from ..anchors import point_in_bounding_box
 from ..transform import Transform, split_rotation
-from .base import BaseGeometry
+from .base import Geometry
 
 
 def face_normal(points: np.ndarray) -> np.ndarray:
@@ -30,7 +30,7 @@ def ring(radius: float, z: float, n: int = 16) -> np.ndarray:
     return np.column_stack([radius * np.cos(theta), radius * np.sin(theta), np.full(n, z)])
 
 
-class BaseShape(BaseGeometry):
+class Shape(Geometry):
     """
     A shape with its own coordinate system x', y', z' (its *pose*).
 
@@ -62,32 +62,28 @@ class BaseShape(BaseGeometry):
     def __init__(
         self,
         position: np.ndarray | list,
-        dimensions: np.ndarray | None = None,
+        *,
         vertices: np.ndarray | None = None,
         anchor: str | np.ndarray | None = None,
     ):
         """
-        Initialize a shape at ``position`` from its dimensions or explicit vertices.
+        Place the shape at ``position``. Subclasses set their sizes before calling this.
 
         The local axes x', y', z' initially line up with the world axes x, y, z.
 
         Args:
             position (array-like): Where the shape's ``anchor`` is placed.
-            dimensions (array-like): The dimensions of the shape, e.g. [width, length, height]
-                for a box. Their meaning depends on the shape.
             vertices (array-like): Explicit vertices, relative to ``position``. If None, they are
-                calculated from the dimensions.
+                calculated by :meth:`calc_initial_vertices` from the shape's sizes.
             anchor (str or array-like): Which point of the shape ends up at ``position``,
                 e.g. ``"bottom"`` or ``"bottom front left"``. Defaults to ``default_anchor``.
                 Ignored for explicit ``vertices``, which are always relative to ``position``.
 
         Example:
-            >>> table = BaseBox([0, 0, 0], dimensions=[2, 1, 0.1])
-            >>> cup = BaseCylinder(table.anchor("top"), dimensions=[0.1, 0.2])  # stands on the table
+            >>> table = Box([0, 0, 0], size=[2, 1, 0.1])
+            >>> cup = Cylinder(table.anchor("top"), radius=0.1, height=0.2)  # stands on the table
         """
-        # TODO: think about a good way for the dimensions parameter. Either different keywords for
-        # different shapes or a general approach where the dimensions are interpreted differently.
-        self.dimensions = np.array(dimensions)
+        position = np.asarray(position, dtype=float)
         self.pose = Transform().translate(position)
         local = self.calc_initial_vertices() if vertices is None else vertices
         self._local_vertices = np.asarray(local, dtype=float)
@@ -97,9 +93,9 @@ class BaseShape(BaseGeometry):
             anchor = self.default_anchor if anchor is None else anchor
             self.pose.matrix[:3, 3] += position - self.anchor(anchor)
 
-    @abstractmethod
     def calc_initial_vertices(self) -> np.ndarray:
         """Return the vertices in local coordinates, i.e. around the local origin."""
+        raise NotImplementedError(f"{type(self).__name__} needs explicit vertices.")
 
     # ------------------------------------------------------------ derived from the pose
 
@@ -230,7 +226,7 @@ class BaseShape(BaseGeometry):
         about: np.ndarray | str | None = None,
     ) -> None:
         """
-        Rotate the shape in place, like :meth:`BaseGeometry.rotate`.
+        Rotate the shape in place, like :meth:`Geometry.rotate`.
 
         In addition, ``axis`` can be one of the shape's own axes ``"x'"``, ``"y'"`` or ``"z'"``.
 

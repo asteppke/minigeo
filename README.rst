@@ -18,7 +18,8 @@ It is meant for sketches and for understanding 3D geometry, readable first, fast
 
 Features
 --------
-- **Geometry**: points, lines, axes, polygons, rectangles, circles, boxes, cylinders and cones.
+- **Geometry**: ``Point``, ``Line``, ``Axis``, ``Polygon``, ``Rectangle``, ``Circle``, ``Box``,
+  ``Cylinder``, ``Cone`` and ``Sphere``, with named sizes: ``Cylinder(position, radius=0.5, height=2)``.
 - **Transforms**: translation, rotation (about any axis and any point), scaling and shear as
   composable 4x4 matrices: ``t @ shape``, ``t1 @ t2``.
 - **Own axes**: every shape has a pose with its own perpendicular axes x', y', z' that turn
@@ -34,27 +35,26 @@ A first scene
 -------------
 .. code-block::
 
-   from minigeo import Scene, Style
-   from minigeo.geometry import BaseBox, BaseCylinder, BaseLine
+   from minigeo import Box, Cylinder, Line, Scene, Style
 
    wood = Style(fill="peru", stroke="saddlebrown")
 
    scene = Scene()
-   table = scene.add(BaseBox([0, 0, 1], dimensions=[2, 1, 0.1], anchor="bottom"), wood)
+   table = scene.add(Box([0, 0, 1], size=[2, 1, 0.1], anchor="bottom"), wood)
 
    # anchors are named points: the cup stands near the front left corner of the tabletop
-   cup = scene.add(BaseCylinder(table.anchor("top front left") + [0.3, 0.3, 0], dimensions=[0.08, 0.2]),
+   cup = scene.add(Cylinder(table.anchor("top front left") + [0.3, 0.3, 0], radius=0.08, height=0.2),
                    fill="C0", label="cup", label_at="top")
 
    # place() moves a shape so that one of its anchors sits on a point
-   book = scene.add(BaseBox([0, 0, 0], dimensions=[0.5, 0.35, 0.06]), fill="C3")
+   book = scene.add(Box([0, 0, 0], size=[0.5, 0.35, 0.06]), fill="C3")
    book.rotate("z'", 20, about="center")
    book.place("bottom", at=table.anchor("top"))
 
-   scene.add(BaseLine(cup.anchor("top"), book.anchor("top")), stroke="gray", dash="dashed")
+   scene.add(Line(cup.anchor("top"), book.anchor("top")), stroke="gray", dash="dashed")
 
    scene                                      # in Jupyter: shows itself as SVG
-   scene.render("svg").save("table.svg")      # a vector drawing
+   scene.save("table.svg")                    # or .png, .pdf (matplotlib), .html (plotly)
    scene.render("matplotlib")                 # 3D axes
    scene.render("plotly").show()              # interactive in the browser
 
@@ -65,19 +65,25 @@ Geometry and transforms
 -----------------------
 .. code-block::
 
-   from minigeo.geometry import BaseBox, Transform
+   from minigeo import Box, Transform
 
-   box = BaseBox([0, 0, 0], dimensions=[1, 2, 3])        # width, length, height
+   box = Box([0, 0, 0], size=(1, 2, 3))                   # width, length, height (or size=1 for a cube)
    Transform().translate([1, 0, 0]) @ box                 # transforms change the shape and return it
    box.rotate("z", 45, about="center")                    # rotate in place around its own center
    box.rotate("x'", 30, about="center")                   # ... or around its own x' axis
 
    turn_then_move = Transform().translate([0, 0, 1]) @ Transform().rotate("z", 90)
 
+   copy = box.copy()                                      # an independent copy
+
+Round shapes take ``segments=`` (default 16), e.g. ``Sphere(position, radius=1, segments=32)``.
+The old names (``BaseBox(position, dimensions=...)``, ``GeometryGroup``, ...) still work but give a
+deprecation warning that names the replacement.
+
 Anchor words refer to a shape's own axes: left/right (x'), front/back (y'), bottom/top (z').
 After rotating a shape, ``shape.anchor("top")`` is still the middle of its own top face.
 Lines use TikZ's positions (``"start"``, ``"near start"``, ``"midway"``, ``"near end"``,
-``"end"``, or a number), and groups (``GeometryGroup``) have anchors on their bounding box.
+``"end"``, or a number), and groups (``Group``) have anchors on their bounding box.
 
 Styles
 ------

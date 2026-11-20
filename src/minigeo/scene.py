@@ -6,8 +6,8 @@ moving a shape after adding it moves it in the next rendering, too.
 
 Example:
     >>> scene = Scene()
-    >>> table = scene.add(BaseBox([0, 0, 0], dimensions=[2, 1, 0.1]), fill="peru")
-    >>> cup = scene.add(BaseCylinder(table.anchor("top"), dimensions=[0.1, 0.2]), label="cup")
+    >>> table = scene.add(Box([0, 0, 0], dimensions=[2, 1, 0.1]), fill="peru")
+    >>> cup = scene.add(Cylinder(table.anchor("top"), dimensions=[0.1, 0.2]), label="cup")
     >>> scene.render()  # with matplotlib; later also "svg" and "plotly"
 """
 
@@ -17,16 +17,17 @@ import importlib
 import importlib.util
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from pathlib import Path as FilePath
 from typing import TypeVar
 
 import numpy as np
 
-from .geometry import BaseGeometry, BaseShape
-from .groups import GeometryGroup
+from .geometry import Geometry, Shape
+from .groups import Group
 from .render import Label, Path, Primitive, bounds, to_primitives, type_style
 from .style import DEFAULT_STYLE, Style
 
-Drawable = TypeVar("Drawable", BaseGeometry, GeometryGroup)
+Drawable = TypeVar("Drawable", Geometry, Group)
 
 #: Backend names and the modules that implement them; each module has ``render(scene, **options)``.
 BACKENDS = {
@@ -43,7 +44,7 @@ FaceKey = int | str  # a face index, or a face name such as "top" for shapes wit
 class SceneItem:
     """One geometry in a scene, with its own style and optional styles for single faces."""
 
-    geometry: BaseGeometry | GeometryGroup
+    geometry: Geometry | Group
     style: Style
     face_styles: dict[FaceKey, Style] = field(default_factory=dict)
 
@@ -52,14 +53,14 @@ class SceneItem:
 class SceneLabel:
     """A text placed at an anchor of a geometry (or at a fixed point)."""
 
-    target: BaseGeometry | GeometryGroup | np.ndarray
+    target: Geometry | Group | np.ndarray
     text: str
     at: str | float | np.ndarray
     style: Style
 
     @property
     def position(self) -> np.ndarray:
-        if isinstance(self.target, BaseGeometry | GeometryGroup):
+        if isinstance(self.target, Geometry | Group):
             return self.target.anchor(self.at)
         return np.asarray(self.target, dtype=float)
 
@@ -74,7 +75,7 @@ class SceneFrame:
     shape that moves or turns.
     """
 
-    target: BaseShape | np.ndarray | None
+    target: Shape | np.ndarray | None
     length: float | None
     labels: tuple[str, str, str]
     colors: tuple[str, str, str]
@@ -82,7 +83,7 @@ class SceneFrame:
     on_top: bool
 
     def origin_axes_length(self) -> tuple[np.ndarray, np.ndarray, float]:
-        if isinstance(self.target, BaseShape):
+        if isinstance(self.target, Shape):
             shape = self.target
             # long enough to stick out of the shape along its longest side
             length = self.length or 0.75 * float(np.ptp(shape.local_vertices, axis=0).max())
@@ -136,8 +137,8 @@ class Scene:
                 they win over ``style``.
 
         Example:
-            >>> box = scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), fill="red", opacity=0.5)
-            >>> dice = scene.add(BaseBox([2, 0, 0], dimensions=[1, 1, 1]), face_styles={"top": Style(fill="gold")})
+            >>> box = scene.add(Box([0, 0, 0], dimensions=[1, 1, 1]), fill="red", opacity=0.5)
+            >>> dice = scene.add(Box([2, 0, 0], dimensions=[1, 1, 1]), face_styles={"top": Style(fill="gold")})
         """
         item_style = (style if style is not None else Style()) | Style(**style_fields)
         if face_styles:
@@ -151,7 +152,7 @@ class Scene:
 
     def add_frame(
         self,
-        target: BaseShape | np.ndarray | None = None,
+        target: Shape | np.ndarray | None = None,
         *,
         length: float | None = None,
         labels: tuple[str, str, str] | None = None,
@@ -178,18 +179,18 @@ class Scene:
             >>> scene.add_frame(box)          # the box's own axes, turning with the box
             >>> scene.add_frame(length=0.5)   # the world axes at the origin
         """
-        if target is not None and not isinstance(target, BaseShape):
+        if target is not None and not isinstance(target, Shape):
             target = np.asarray(target, dtype=float)
             if target.shape != (3,):
                 raise TypeError("A frame needs a shape, a point (x, y, z) or None for the origin.")
         if labels is None:
-            labels = ("x′", "y′", "z′") if isinstance(target, BaseShape) else ("x", "y", "z")
+            labels = ("x′", "y′", "z′") if isinstance(target, Shape) else ("x", "y", "z")
         frame_style = (style if style is not None else Style()) | Style(**style_fields)
         self.frames.append(SceneFrame(target, length, tuple(labels), tuple(colors), frame_style, on_top))
 
     def label(
         self,
-        target: BaseGeometry | GeometryGroup | np.ndarray,
+        target: Geometry | Group | np.ndarray,
         text: str,
         at: str | float | np.ndarray = "center",
         style: Style | None = None,
@@ -253,6 +254,34 @@ class Scene:
             **options: Passed on to the backend, e.g. ``elev=20``, ``show_axes=False``.
         """
         return self._backend(backend).render(self, **options)
+
+    def save(self, path: str | FilePath, **options) -> None:
+        """
+        Save the scene; the file extension chooses the backend.
+
+        * ``.svg``: the SVG backend
+        * ``.html``: the plotly backend (an interactive page)
+        * ``.png``, ``.pdf``: the matplotlib backend
+
+        Args:
+            path: The file to write.
+            **options: Passed on to the backend, e.g. ``elev=20`` or ``width=600``.
+
+        Example:
+            >>> scene.save("table.svg", show_axes=False)
+        """
+        path = FilePath(path)
+        suffix = path.suffix.lower()
+        if suffix == ".svg":
+            self.render("svg", **options).save(path)
+        elif suffix == ".html":
+            self.render("plotly", **options).write_html(path)
+        elif suffix in {".png", ".pdf"}:
+            from .backends.matplotlib import to_figure
+
+            to_figure(self, **options).savefig(path)
+        else:
+            raise ValueError(f"Cannot save {path.name}: use .svg, .html, .png or .pdf.")
 
     def snapshots(self, update: Callable[[int], None], frames: int) -> list[list[Primitive]]:
         """
@@ -339,7 +368,7 @@ def _face_index(geometry, key: FaceKey) -> int:
 
 
 def _check_face_keys(geometry, face_styles: dict[FaceKey, Style]) -> None:
-    if not isinstance(geometry, BaseShape):
+    if not isinstance(geometry, Shape):
         raise TypeError("face_styles only work for shapes.")
     count = len(geometry.face_indices)
     for key in face_styles:

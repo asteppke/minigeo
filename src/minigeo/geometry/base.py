@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -10,7 +11,7 @@ from ..anchors import resolve_pivot
 from ..transform import Transform
 
 
-class BaseGeometry(ABC):
+class Geometry(ABC):
     """
     Base class for all geometry classes.
     Every geometry contains vertices (np.ndarrray) as underlying properties."""
@@ -29,6 +30,16 @@ class BaseGeometry(ABC):
     def center(self) -> np.ndarray:
         """The mean of all vertices. Shapes override this with their defined center."""
         return self.vertices.mean(axis=0)
+
+    def copy(self):
+        """
+        Return an independent copy: transforming one does not change the other.
+
+        Example:
+            >>> after = before.copy()
+            >>> after.rotate("z", 60)
+        """
+        return copy.deepcopy(self)
 
     def apply_transform(self, transform: Transform) -> None:
         """Transform all vertices in place. Subclasses extend this to update derived state."""
@@ -68,7 +79,7 @@ class BaseGeometry(ABC):
             return self.center
         raise ValueError(f"{type(self).__name__} has no anchor {name!r}; only 'center'.")
 
-    def place(self, anchor: str | np.ndarray | float, at: np.ndarray) -> BaseGeometry:
+    def place(self, anchor: str | np.ndarray | float, at: np.ndarray) -> Geometry:
         """
         Move the geometry (without turning it) so that its ``anchor`` ends up at ``at``.
 

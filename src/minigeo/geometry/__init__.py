@@ -3,7 +3,10 @@ Geometries: points, lines, axes and shapes.
 
 The building blocks (transforms and anchors) are re-exported here as well, so that
 ``import minigeo.geometry as geo`` gives access to everything needed to build a scene.
+The old names (``BaseBox``, ``BaseCylinder``, ...) still work but warn; see :mod:`.legacy`.
 """
+
+import warnings
 
 from ..anchors import (
     ANCHOR_WORDS,
@@ -15,25 +18,26 @@ from ..anchors import (
     resolve_pivot,
 )
 from ..transform import Transform, rotate_arbitrary_vector_matrix, split_rotation
-from .base import BaseGeometry
-from .primitives import BaseAxis, BaseLine, BasePoint
-from .shape import BaseShape, face_normal, ring
-from .shapes import BaseBox, BaseCircle, BaseCone, BaseCylinder, BasePolygon, BaseRectangle
+from .base import Geometry
+from .primitives import Axis, Line, Point
+from .shape import Shape, face_normal, ring
+from .shapes import Box, Circle, Cone, Cylinder, Polygon, Rectangle, Sphere
 
 __all__ = [
     "ANCHOR_WORDS",
     "LINE_POSITIONS",
-    "BaseAxis",
-    "BaseBox",
-    "BaseCircle",
-    "BaseCone",
-    "BaseCylinder",
-    "BaseGeometry",
-    "BaseLine",
-    "BasePoint",
-    "BasePolygon",
-    "BaseRectangle",
-    "BaseShape",
+    "Axis",
+    "Box",
+    "Circle",
+    "Cone",
+    "Cylinder",
+    "Geometry",
+    "Line",
+    "Point",
+    "Polygon",
+    "Rectangle",
+    "Shape",
+    "Sphere",
     "Transform",
     "anchor_direction",
     "face_normal",
@@ -45,3 +49,35 @@ __all__ = [
     "rotate_arbitrary_vector_matrix",
     "split_rotation",
 ]
+
+#: Old names: those whose arguments changed live in .legacy, the others are just renamed.
+_OLD_NAMES = {
+    "BaseGeometry": (Geometry, "Geometry"),
+    "BaseShape": (Shape, "Shape"),
+    "BasePoint": (Point, "Point"),
+    "BaseLine": (Line, "Line"),
+    "BaseAxis": (Axis, "Axis"),
+    "BasePolygon": (Polygon, "Polygon"),
+    "BaseBox": (None, "Box(position, size=(width, length, height))"),
+    "BaseRectangle": (None, "Rectangle(position, size=(width, length))"),
+    "BaseCircle": (None, "Circle(position, radius=...)"),
+    "BaseCylinder": (None, "Cylinder(position, radius=..., height=...)"),
+    "BaseCone": (None, "Cone(position, radius=..., height=..., top_radius=...)"),
+}
+
+
+_warned: set[str] = set()  # warn once per name; `from ... import` looks names up twice
+
+
+def __getattr__(name: str):
+    if name in _OLD_NAMES:
+        new_class, replacement = _OLD_NAMES[name]
+        if name not in _warned:
+            _warned.add(name)
+            warnings.warn(f"{name} is deprecated; use {replacement}.", DeprecationWarning, stacklevel=2)
+        if new_class is None:
+            from . import legacy
+
+            return getattr(legacy, name)
+        return new_class
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

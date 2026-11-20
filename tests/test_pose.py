@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 
 from minigeo.geometry import (
-    BaseBox,
-    BaseCylinder,
-    BasePolygon,
+    Box,
+    Cylinder,
+    Polygon,
     Transform,
     split_rotation,
 )
@@ -14,8 +14,8 @@ from minigeo.geometry import (
 X, Y, Z = np.eye(3)
 
 
-def make_box(center=(0, 0, 0), dimensions=(2, 1, 1)):
-    return BaseBox(list(center), dimensions=list(dimensions))
+def make_box(center=(0, 0, 0), size=(2, 1, 1)):
+    return Box(list(center), size=list(size))
 
 
 def assert_perpendicular_unit_axes(shape):
@@ -43,13 +43,13 @@ def test_local_vertices_are_around_the_local_origin():
 
 
 def test_polygon_vertices_are_relative_to_position():
-    poly = BasePolygon([0, 0, 2], [[1, 1, 1], [1, 1, 0], [1, 0, 1]])
+    poly = Polygon([0, 0, 2], [[1, 1, 1], [1, 1, 0], [1, 0, 1]])
     np.testing.assert_allclose(poly.vertices, [[1, 1, 3], [1, 1, 2], [1, 0, 3]])
 
 
 def test_polygon_without_vertices_raises():
     with pytest.raises(TypeError):
-        BasePolygon([0, 0, 0])
+        Polygon([0, 0, 0])
 
 
 # ---------------------------------------------------------------- rigid transforms move the pose
@@ -190,6 +190,6 @@ def test_split_rotation_of_pure_rotation():
 
 
 def test_cylinder_base_sits_at_position():
-    cylinder = BaseCylinder([0, 0, 1], dimensions=(1, 2))
+    cylinder = Cylinder([0, 0, 1], radius=1, height=2)
     np.testing.assert_allclose(cylinder.vertices[:, 2].min(), 1)
     np.testing.assert_allclose(cylinder.vertices[:, 2].max(), 3)

@@ -5,10 +5,10 @@ from __future__ import annotations
 import numpy as np
 
 from ..anchors import point_on_segment
-from .base import BaseGeometry
+from .base import Geometry
 
 
-class BasePoint(BaseGeometry):
+class Point(Geometry):
     """
     Represents a single 3D point or vertex.
     """
@@ -45,7 +45,7 @@ class BasePoint(BaseGeometry):
         return f"{self.__class__.__name__} at {self.position}"
 
 
-class BaseLine(BaseGeometry):
+class Line(Geometry):
     def __init__(
         self,
         start: np.ndarray,
@@ -90,11 +90,11 @@ class BaseLine(BaseGeometry):
         return f"{self.__class__.__name__} from {self.start} to {self.end}"
 
 
-class BaseAxis(BaseGeometry):
+class Axis(Geometry):
     """
     An axis: a segment from ``origin`` along a unit ``direction``, drawn as an arrow by default.
 
-    Unlike a :class:`BaseLine`, it keeps its direction as a unit vector, which stays up to
+    Unlike a :class:`Line`, it keeps its direction as a unit vector, which stays up to
     date when the axis is transformed.
     """
 
@@ -114,7 +114,7 @@ class BaseAxis(BaseGeometry):
             label (str, optional): An optional name.
 
         Example:
-            >>> BaseAxis([0, 0, 1], position=[1, 0, 0], length=2)  # from (1, 0, 0) up to (1, 0, 2)
+            >>> Axis([0, 0, 1], position=[1, 0, 0], length=2)  # from (1, 0, 0) up to (1, 0, 2)
         """
         direction = np.asarray(direction, dtype=float)
         norm = np.linalg.norm(direction)
@@ -150,7 +150,7 @@ class BaseAxis(BaseGeometry):
         return self.vertices
 
     def anchor(self, name: str | float = "midway") -> np.ndarray:
-        """Return a point along the axis segment; the same names as :meth:`BaseLine.anchor`."""
+        """Return a point along the axis segment; the same names as :meth:`Line.anchor`."""
         return point_on_segment(self.vertices[0], self.vertices[1], name)
 
     def __repr__(self):

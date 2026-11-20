@@ -9,13 +9,13 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from minigeo import Scene  # noqa: E402
 from minigeo.backends.matplotlib import MatplotlibAnimation  # noqa: E402
-from minigeo.geometry import BaseBox  # noqa: E402
+from minigeo.geometry import Box  # noqa: E402
 from minigeo.render import Face  # noqa: E402
 
 
 def turning_box():
     scene = Scene()
-    box = scene.add(BaseBox([0, 0, 0], dimensions=[2, 1, 0.5]), fill="C0", frame=True)
+    box = scene.add(Box([0, 0, 0], size=[2, 1, 0.5]), fill="C0", frame=True)
     return scene, box
 
 
@@ -76,7 +76,7 @@ def test_plotly_animation_has_frames_controls_and_a_fixed_view():
 
 def test_plotly_view_covers_all_frames():
     scene = Scene()
-    box = scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]))
+    box = scene.add(Box([0, 0, 0], size=[1, 1, 1]))
     figure = scene.animate(lambda frame: box.place("center", at=[3 * frame, 0, 0]), frames=3)
     low, high = figure.layout.scene.xaxis.range
     assert low < -0.5 and high > 6.5
@@ -84,11 +84,9 @@ def test_plotly_view_covers_all_frames():
 
 def test_plotly_animation_rejects_changing_structure():
     scene = Scene()
-    box = scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]))
+    box = scene.add(Box([0, 0, 0], size=[1, 1, 1]))
     with pytest.raises(ValueError):
-        scene.animate(
-            lambda frame: scene.add(BaseBox([2, 0, 0], dimensions=[1, 1, 1]), opacity=0.5), frames=2
-        )
+        scene.animate(lambda frame: scene.add(Box([2, 0, 0], size=[1, 1, 1]), opacity=0.5), frames=2)
     assert box  # the scene itself is unharmed
 
 

@@ -11,7 +11,7 @@ from matplotlib.colors import to_rgba  # noqa: E402
 
 from minigeo import Scene  # noqa: E402
 from minigeo.backends.matplotlib import to_png  # noqa: E402
-from minigeo.geometry import BaseAxis, BaseBox, BaseCylinder, BaseLine, BasePoint  # noqa: E402
+from minigeo.geometry import Axis, Box, Cylinder, Line, Point  # noqa: E402
 
 
 @pytest.fixture
@@ -23,11 +23,11 @@ def ax():
 
 def small_scene():
     scene = Scene()
-    box = scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), fill="red", label="box", label_at="top")
-    scene.add(BaseCylinder(box.anchor("top"), dimensions=[0.2, 0.5]), fill="C2")
-    scene.add(BaseLine([0, 0, 0], [2, 0, 0]), stroke="blue", dash="dashed")
-    scene.add(BaseAxis([0, 0, 1]))
-    scene.add(BasePoint([1, 1, 1]))
+    box = scene.add(Box([0, 0, 0], size=[1, 1, 1]), fill="red", label="box", label_at="top")
+    scene.add(Cylinder(box.anchor("top"), radius=0.2, height=0.5), fill="C2")
+    scene.add(Line([0, 0, 0], [2, 0, 0]), stroke="blue", dash="dashed")
+    scene.add(Axis([0, 0, 1]))
+    scene.add(Point([1, 1, 1]))
     return scene
 
 
@@ -50,7 +50,7 @@ def test_render_needs_3d_axes():
 
 def test_one_collection_per_face(ax):
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), fill="red")
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), fill="red")
     scene.render(ax=ax)
     assert len(ax.collections) == 6
     red, green, blue, _ = to_rgba(ax.collections[0].get_facecolor()[0])
@@ -59,8 +59,8 @@ def test_one_collection_per_face(ax):
 
 def test_opaque_back_faces_are_hidden_transparent_ones_not(ax):
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]))
-    scene.add(BaseBox([3, 0, 0], dimensions=[1, 1, 1]), opacity=0.5)
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]))
+    scene.add(Box([3, 0, 0], size=[1, 1, 1]), opacity=0.5)
     scene.render(ax=ax)
     opaque, transparent = ax.collections[:6], ax.collections[6:]
     assert sum(c.get_visible() for c in opaque) == 3  # a box shows at most three faces
@@ -104,7 +104,7 @@ def test_equal_scale_for_every_vertical_axis(ax, vertical):
     from mpl_toolkits.mplot3d import proj3d
 
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1.7, 6.6, 4.8]))
+    scene.add(Box([0, 0, 0], size=[1.7, 6.6, 4.8]))
     scene.render(ax=ax, vertical_axis=vertical)
     box_aspect = ax._roll_to_vertical(ax._box_aspect)  # what matplotlib uses internally
     world = proj3d.world_transformation(

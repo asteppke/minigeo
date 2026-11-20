@@ -1,27 +1,42 @@
 from __future__ import annotations
 
+import copy
+import warnings
+
 import numpy as np
 
 from .anchors import point_in_bounding_box, resolve_pivot
-from .geometry import BaseGeometry
+from .geometry import Geometry
 from .transform import Transform
 
 
-class GeometryGroup:
-    def __init__(self, geometries: list[BaseGeometry] | None = None):
+class Group:
+    """
+    Several geometries that are moved, turned and placed together.
+
+    Example:
+        >>> lamp = Group([stand, shade])
+        >>> lamp.place("bottom", at=table.anchor("top"))
+    """
+
+    def __init__(self, geometries: list[Geometry] | None = None):
         """
-        Container for multiple BaseGeometry objects.
+        Container for multiple Geometry objects.
 
         Args:
-            geometries (list[BaseGeometry] | None): Optional starting list of geometries.
+            geometries (list[Geometry] | None): Optional starting list of geometries.
         """
         self.geometries = list(geometries) if geometries is not None else []
 
-    def add(self, geometry: BaseGeometry) -> None:
+    def copy(self) -> Group:
+        """Return an independent copy of the group and all its members."""
+        return copy.deepcopy(self)
+
+    def add(self, geometry: Geometry) -> None:
         """Add a geometry object to the group."""
         self.geometries.append(geometry)
 
-    def remove(self, geometry: BaseGeometry) -> None:
+    def remove(self, geometry: Geometry) -> None:
         """Remove a geometry object from the group."""
         self.geometries.remove(geometry)
 
@@ -67,7 +82,7 @@ class GeometryGroup:
             raise ValueError("An empty group has no anchors.")
         return point_in_bounding_box(self.vertices, name)
 
-    def place(self, anchor: str | np.ndarray, at: np.ndarray) -> GeometryGroup:
+    def place(self, anchor: str | np.ndarray, at: np.ndarray) -> Group:
         """Move all members together (without turning) so that the group's ``anchor`` ends up at ``at``."""
         offset = np.asarray(at, dtype=float) - self.anchor(anchor)
         self.apply_transform(Transform().translate(offset))
@@ -87,10 +102,22 @@ class GeometryGroup:
         about: np.ndarray | str | None = None,
     ) -> None:
         """
-        Rotate all members together, like :meth:`BaseGeometry.rotate`.
+        Rotate all members together, like :meth:`Geometry.rotate`.
 
         ``about="center"`` uses the group's center, so the members keep their arrangement
         and the group spins in place.
         """
         pivot = resolve_pivot(about, self)
         self.apply_transform(Transform().rotate(axis, angle, in_degrees, about=pivot))
+
+
+_warned: set[str] = set()  # warn once; `from ... import` looks names up twice
+
+
+def __getattr__(name: str):
+    if name == "GeometryGroup":
+        if name not in _warned:
+            _warned.add(name)
+            warnings.warn("GeometryGroup is deprecated; use Group.", DeprecationWarning, stacklevel=2)
+        return Group
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

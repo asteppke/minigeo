@@ -4,20 +4,20 @@ import numpy as np
 import pytest
 
 from minigeo.geometry import (
-    BaseAxis,
-    BaseBox,
-    BaseCircle,
-    BaseCone,
-    BaseCylinder,
-    BaseLine,
-    BasePoint,
+    Axis,
+    Box,
+    Circle,
+    Cone,
+    Cylinder,
+    Line,
+    Point,
     Transform,
 )
-from minigeo.groups import GeometryGroup
+from minigeo.groups import Group
 
 
 def unit_box(center=(0, 0, 0)):
-    return BaseBox(list(center), dimensions=[1, 1, 1])
+    return Box(list(center), size=[1, 1, 1])
 
 
 # ---------------------------------------------------------------- Transform API
@@ -38,7 +38,7 @@ def test_matmul_composes_transforms_right_to_left():
     move = Transform().translate([1, 0, 0])
     turn = Transform().rotate_z(90)
     # (turn @ move) means: first move, then turn
-    point = (turn @ move) @ BasePoint([0, 0, 0])
+    point = (turn @ move) @ Point([0, 0, 0])
     np.testing.assert_allclose(point.position, [0, 1, 0], atol=1e-12)
 
 
@@ -72,7 +72,7 @@ def test_shear_requires_four_factors():
 
 
 def test_shear_xy_shifts_x_by_y():
-    point = Transform().shear([0.5, 0, 0, 0]) @ BasePoint([0, 2, 0])
+    point = Transform().shear([0.5, 0, 0, 0]) @ Point([0, 2, 0])
     np.testing.assert_allclose(point.position, [1, 2, 0])
 
 
@@ -99,19 +99,19 @@ def test_setting_center_moves_vertices():
 
 
 def test_center_of_point_and_line():
-    np.testing.assert_allclose(BasePoint([1, 2, 3]).center, [1, 2, 3])
-    np.testing.assert_allclose(BaseLine([0, 0, 0], [2, 0, 0]).center, [1, 0, 0])
+    np.testing.assert_allclose(Point([1, 2, 3]).center, [1, 2, 3])
+    np.testing.assert_allclose(Line([0, 0, 0], [2, 0, 0]).center, [1, 0, 0])
 
 
 def test_axis_origin_follows_translation():
-    axis = BaseAxis([1, 0, 0])
+    axis = Axis([1, 0, 0])
     Transform().translate([0, 1, 0]) @ axis
     np.testing.assert_allclose(axis.origin, [0, 1, 0])
     np.testing.assert_allclose(axis.direction, [1, 0, 0])
 
 
 def test_axis_direction_follows_rotation():
-    axis = BaseAxis([1, 0, 0])
+    axis = Axis([1, 0, 0])
     Transform().rotate_z(90) @ axis
     np.testing.assert_allclose(axis.direction, [0, 1, 0], atol=1e-12)
 
@@ -120,31 +120,31 @@ def test_axis_direction_follows_rotation():
 
 
 def test_group_accepts_tuple_and_can_add():
-    group = GeometryGroup((unit_box(),))
-    group.add(BasePoint([0, 0, 0]))
+    group = Group((unit_box(),))
+    group.add(Point([0, 0, 0]))
     assert len(group.geometries) == 2
 
 
 def test_group_center_with_lines_and_points():
     # middle of the bounding box from x=0 to x=4, not the average of the member centers (1.5)
-    group = GeometryGroup([BasePoint([0, 0, 0]), BaseLine([2, 0, 0], [4, 0, 0])])
+    group = Group([Point([0, 0, 0]), Line([2, 0, 0], [4, 0, 0])])
     np.testing.assert_allclose(group.center, [2, 0, 0])
 
 
 def test_empty_group_center_is_origin():
-    np.testing.assert_allclose(GeometryGroup().center, [0, 0, 0])
+    np.testing.assert_allclose(Group().center, [0, 0, 0])
 
 
 def test_group_transform_moves_member_centers():
     box = unit_box()
-    group = GeometryGroup([box, BaseLine([0, 0, 0], [1, 0, 0])])
+    group = Group([box, Line([0, 0, 0], [1, 0, 0])])
     Transform().translate([1, 0, 0]) @ group
     np.testing.assert_allclose(box.center, [1, 0, 0])
 
 
 def test_group_rotate():
-    point = BasePoint([1, 0, 0])
-    GeometryGroup([point]).rotate("z", 90)
+    point = Point([1, 0, 0])
+    Group([point]).rotate("z", 90)
     np.testing.assert_allclose(point.position, [0, 1, 0], atol=1e-12)
 
 
@@ -152,12 +152,12 @@ def test_group_rotate():
 
 
 def test_circle_has_no_duplicate_vertex():
-    circle = BaseCircle([0, 0, 0], dimensions=[1])
+    circle = Circle([0, 0, 0], radius=1)
     assert len(np.unique(circle.vertices.round(9), axis=0)) == len(circle.vertices)
 
 
 def test_cylinder_has_one_side_face_per_segment():
-    cylinder = BaseCylinder([0, 0, 0], dimensions=(1, 2))
+    cylinder = Cylinder([0, 0, 0], radius=1, height=2)
     n = len(cylinder.vertices) // 2
     assert len(cylinder.side_faces) == n
     for face in cylinder.side_faces:
@@ -166,19 +166,19 @@ def test_cylinder_has_one_side_face_per_segment():
 
 
 def test_cylinder_top_and_bottom_faces():
-    cylinder = BaseCylinder([0, 0, 0], dimensions=(1, 2))
+    cylinder = Cylinder([0, 0, 0], radius=1, height=2)
     np.testing.assert_allclose(cylinder.bottom_faces[0][:, 2], 0)
     np.testing.assert_allclose(cylinder.top_faces[0][:, 2], 2)
 
 
 def test_cylinder_edges_stay_within_a_ring():
-    cylinder = BaseCylinder([0, 0, 0], dimensions=(1, 2))
+    cylinder = Cylinder([0, 0, 0], radius=1, height=2)
     for start, end in cylinder.edges:
         assert start[2] == end[2]
 
 
 def test_cone_repr_names_dimensions_correctly():
-    text = repr(BaseCone([0, 0, 0], dimensions=(0.5, 0.2, 1)))
+    text = repr(Cone([0, 0, 0], radius=0.5, height=1, top_radius=0.2))
     assert "0.5 (bottom)" in text and "0.2 (top)" in text and "height 1" in text
 
 
@@ -187,7 +187,7 @@ def test_cone_repr_names_dimensions_correctly():
 
 def test_transform_rotate_about_point():
     # spinning around the vertical line through (1, 0, 0)
-    point = Transform().rotate("z", 90, about=[1, 0, 0]) @ BasePoint([2, 0, 0])
+    point = Transform().rotate("z", 90, about=[1, 0, 0]) @ Point([2, 0, 0])
     np.testing.assert_allclose(point.position, [1, 1, 0], atol=1e-12)
 
 
@@ -201,12 +201,12 @@ def test_rotate_about_equals_explicit_sandwich():
 
 def test_rotate_about_chains_with_other_transforms():
     t = Transform().translate([0, 0, 5]).rotate("z", 90, about=[0, 0, 0]).scale([2, 2, 2])
-    point = t @ BasePoint([1, 0, 0])
+    point = t @ Point([1, 0, 0])
     np.testing.assert_allclose(point.position, [0, 2, 10], atol=1e-12)
 
 
 def test_shape_rotate_about_center_keeps_center():
-    box = BaseBox([5, 0, 0], dimensions=[2, 1, 1])
+    box = Box([5, 0, 0], size=[2, 1, 1])
     box.rotate("z", 90, about="center")
     np.testing.assert_allclose(box.center, [5, 0, 0], atol=1e-12)
     # the long side now points along y
@@ -227,7 +227,7 @@ def test_shape_rotate_without_about_uses_origin():
 
 
 def test_line_rotate_about_center():
-    line = BaseLine([0, 0, 0], [2, 0, 0])
+    line = Line([0, 0, 0], [2, 0, 0])
     line.rotate("z", 90, about="center")
     np.testing.assert_allclose(line.vertices, [[1, -1, 0], [1, 1, 0]], atol=1e-12)
 
@@ -238,8 +238,8 @@ def test_rotate_about_unknown_name_raises():
 
 
 def test_group_rotate_about_center_keeps_arrangement():
-    a, b = BasePoint([1, 0, 0]), BasePoint([3, 0, 0])
-    group = GeometryGroup([a, b])
+    a, b = Point([1, 0, 0]), Point([3, 0, 0])
+    group = Group([a, b])
     group.rotate("z", 90, about="center")
     np.testing.assert_allclose(a.position, [2, -1, 0], atol=1e-12)
     np.testing.assert_allclose(b.position, [2, 1, 0], atol=1e-12)
@@ -247,7 +247,7 @@ def test_group_rotate_about_center_keeps_arrangement():
 
 
 def test_axis_length():
-    axis = BaseAxis([0, 0, 5], position=[1, 0, 0], length=2)
+    axis = Axis([0, 0, 5], position=[1, 0, 0], length=2)
     np.testing.assert_allclose(axis.direction, [0, 0, 1])
     np.testing.assert_allclose(axis.vertices, [[1, 0, 0], [1, 0, 2]])
     Transform().scale([1, 1, 3]) @ axis

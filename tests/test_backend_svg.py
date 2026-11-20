@@ -7,7 +7,7 @@ import pytest
 
 from minigeo import Scene
 from minigeo.backends.svg import SvgDrawing
-from minigeo.geometry import BaseAxis, BaseBox, BaseCylinder, BaseLine, BasePoint, BaseRectangle
+from minigeo.geometry import Axis, Box, Cylinder, Line, Point, Rectangle
 
 NS = {"svg": "http://www.w3.org/2000/svg"}
 
@@ -22,7 +22,7 @@ def find(root, tag):
 
 def one_box(**style):
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), **style)
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), **style)
     return scene
 
 
@@ -59,7 +59,7 @@ def test_colors_are_translated():
 
 def test_cylinder_outline_has_no_seams():
     scene = Scene()
-    scene.add(BaseCylinder([0, 0, 0], dimensions=[1, 2]), stroke="black")
+    scene.add(Cylinder([0, 0, 0], radius=1, height=2), stroke="black")
     root = parse(scene.render("svg"))
     seam_free = [p for p in find(root, "polygon") if p.get("stroke") not in ("black",)]
     outlines = [p for p in find(root, "path") if p.get("stroke") == "black"]
@@ -68,9 +68,9 @@ def test_cylinder_outline_has_no_seams():
 
 def test_lines_dashes_and_arrows():
     scene = Scene()
-    scene.add(BaseLine([0, 0, 0], [1, 0, 0]), stroke="blue", dash="dashed", line_width=2)
-    scene.add(BaseAxis([0, 0, 1]), stroke="blue")
-    scene.add(BaseAxis([0, 1, 0]), stroke="green")
+    scene.add(Line([0, 0, 0], [1, 0, 0]), stroke="blue", dash="dashed", line_width=2)
+    scene.add(Axis([0, 0, 1]), stroke="blue")
+    scene.add(Axis([0, 1, 0]), stroke="green")
     root = parse(scene.render("svg"))
     lines = find(root, "polyline")
     (dashed,) = [line for line in lines if line.get("stroke-dasharray")]
@@ -82,8 +82,8 @@ def test_lines_dashes_and_arrows():
 
 def test_points_and_labels():
     scene = Scene()
-    scene.add(BasePoint([0, 0, 0]), fill="red")
-    scene.add(BaseLine([0, 0, 0], [1, 0, 0]), label="a < b", label_at="end", text_color="green")
+    scene.add(Point([0, 0, 0]), fill="red")
+    scene.add(Line([0, 0, 0], [1, 0, 0]), label="a < b", label_at="end", text_color="green")
     root = parse(scene.render("svg"))
     assert find(root, "circle")[0].get("fill") == "red"
     (text,) = find(root, "text")
@@ -92,23 +92,23 @@ def test_points_and_labels():
 
 def test_labels_are_painted_last():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), label="box")
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), label="box")
     root = parse(scene.render("svg"))
     assert list(root)[-1].tag.endswith("text")
 
 
 def test_small_object_on_tabletop_is_painted_after_it():
     scene = Scene()
-    tabletop = scene.add(BaseRectangle([0, 0, 0], dimensions=[4, 2]), fill="brown")
+    tabletop = scene.add(Rectangle([0, 0, 0], size=[4, 2]), fill="brown")
     # further back than the tabletop's center, but well inside it on screen
-    scene.add(BaseCylinder(tabletop.anchor("back left") + [1.0, -0.6, 0], dimensions=[0.1, 0.3]), fill="blue")
+    scene.add(Cylinder(tabletop.anchor("back left") + [1.0, -0.6, 0], radius=0.1, height=0.3), fill="blue")
     fills = [p.get("fill") for p in find(parse(scene.render("svg", shading=False)), "polygon")]
     assert fills.index("brown") < min(i for i, f in enumerate(fills) if f == "blue")
 
 
 def test_view_options_change_the_picture():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 2, 3]))
+    scene.add(Box([0, 0, 0], size=[1, 2, 3]))
     assert str(scene.render("svg")) != str(scene.render("svg", vertical_axis="x"))
     assert str(scene.render("svg")) != str(scene.render("svg", elev=10, azim=20))
 
@@ -128,7 +128,7 @@ def test_jupyter_display_and_save(tmp_path):
 
 def test_wide_scene_keeps_proportions():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[10, 1, 1]))
+    scene.add(Box([0, 0, 0], size=[10, 1, 1]))
     root = parse(scene.render("svg", width=500, elev=0, azim=-90))  # seen from the front
     width, height = int(root.get("width")), int(root.get("height"))
     assert width == 500 and height == pytest.approx(40 + 460 / 10, abs=2)
@@ -137,7 +137,7 @@ def test_wide_scene_keeps_proportions():
 
 def test_frame_arrows_are_painted_over_the_shape():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]), frame=True)
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), frame=True)
     root = parse(scene.render("svg"))
     tags = [element.tag.split("}")[1] for element in root if not element.tag.endswith("defs")]
     last_polygon = max(i for i, tag in enumerate(tags) if tag == "polygon")

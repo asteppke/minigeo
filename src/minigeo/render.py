@@ -13,8 +13,8 @@ from functools import singledispatch
 
 import numpy as np
 
-from .geometry import BaseAxis, BaseGeometry, BaseLine, BasePoint, BaseShape
-from .groups import GeometryGroup
+from .geometry import Axis, Geometry, Line, Point, Shape
+from .groups import Group
 from .style import Style
 
 
@@ -80,13 +80,13 @@ Primitive = Face | Path | Marker | Label
 
 
 @singledispatch
-def to_primitives(geometry: BaseGeometry, style: Style) -> list[Primitive]:
+def to_primitives(geometry: Geometry, style: Style) -> list[Primitive]:
     """Turn one geometry into primitives, all drawn with the given complete ``style``."""
     raise TypeError(f"Don't know how to draw {type(geometry).__name__}.")
 
 
 @to_primitives.register
-def _(shape: BaseShape, style: Style) -> list[Primitive]:
+def _(shape: Shape, style: Style) -> list[Primitive]:
     outline_edges = {frozenset(edge) for edge in shape.edge_indices.tolist()}
     vertices = shape.vertices
     faces = []
@@ -98,28 +98,28 @@ def _(shape: BaseShape, style: Style) -> list[Primitive]:
 
 
 @to_primitives.register
-def _(line: BaseLine, style: Style) -> list[Primitive]:
+def _(line: Line, style: Style) -> list[Primitive]:
     return [Path(line.vertices.copy(), style)]
 
 
 @to_primitives.register
-def _(axis: BaseAxis, style: Style) -> list[Primitive]:
+def _(axis: Axis, style: Style) -> list[Primitive]:
     return [Path(axis.vertices.copy(), style)]
 
 
 @to_primitives.register
-def _(point: BasePoint, style: Style) -> list[Primitive]:
+def _(point: Point, style: Style) -> list[Primitive]:
     return [Marker(point.position.astype(float), style)]
 
 
 @to_primitives.register
-def _(group: GeometryGroup, style: Style) -> list[Primitive]:
+def _(group: Group, style: Style) -> list[Primitive]:
     return [primitive for member in group.geometries for primitive in to_primitives(member, style)]
 
 
-def type_style(geometry: BaseGeometry | GeometryGroup) -> Style:
+def type_style(geometry: Geometry | Group) -> Style:
     """Defaults that depend on the kind of geometry, e.g. axes are drawn as arrows."""
-    if isinstance(geometry, BaseAxis):
+    if isinstance(geometry, Axis):
         return Style(arrow=True)
     return Style()
 

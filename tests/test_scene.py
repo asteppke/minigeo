@@ -4,14 +4,14 @@ import numpy as np
 import pytest
 
 from minigeo import Scene, Style
-from minigeo.geometry import BaseAxis, BaseBox, BaseCircle, BaseCylinder, BaseLine, BasePoint
-from minigeo.groups import GeometryGroup
+from minigeo.geometry import Axis, Box, Circle, Cylinder, Line, Point
+from minigeo.groups import Group
 from minigeo.render import Face, Label, Marker, Path, to_primitives
 from minigeo.style import DEFAULT_STYLE
 
 
 def unit_box(position=(0, 0, 0)):
-    return BaseBox(list(position), dimensions=[1, 1, 1])
+    return Box(list(position), size=[1, 1, 1])
 
 
 def of_type(primitives, kind):
@@ -57,8 +57,8 @@ def test_style_precedence():
 
 def test_axes_are_arrows_by_default_but_can_be_changed():
     scene = Scene()
-    scene.add(BaseAxis([1, 0, 0]))
-    scene.add(BaseAxis([0, 1, 0]), arrow=False)
+    scene.add(Axis([1, 0, 0]))
+    scene.add(Axis([0, 1, 0]), arrow=False)
     first, second = scene.primitives()
     assert first.style.arrow and not second.style.arrow
 
@@ -78,7 +78,7 @@ def test_box_becomes_six_fully_outlined_closed_faces():
 
 
 def test_cylinder_outlines_only_its_rings():
-    cylinder = BaseCylinder([0, 0, 0], dimensions=[1, 2])
+    cylinder = Cylinder([0, 0, 0], radius=1, height=2)
     faces = to_primitives(cylinder, DEFAULT_STYLE)
     side, bottom, top = faces[0], faces[-2], faces[-1]
     assert side.outline == ((0, 1), (2, 3))  # bottom and top side of the quad, no vertical seams
@@ -86,15 +86,15 @@ def test_cylinder_outlines_only_its_rings():
 
 
 def test_flat_shapes_are_not_closed():
-    (face,) = to_primitives(BaseCircle([0, 0, 0], dimensions=[1]), DEFAULT_STYLE)
+    (face,) = to_primitives(Circle([0, 0, 0], radius=1), DEFAULT_STYLE)
     assert not face.closed
 
 
 def test_lines_points_and_groups():
     scene = Scene()
-    scene.add(BaseLine([0, 0, 0], [1, 0, 0]))
-    scene.add(BasePoint([0, 0, 1]))
-    scene.add(GeometryGroup([unit_box(), unit_box((2, 0, 0))]), fill="red")
+    scene.add(Line([0, 0, 0], [1, 0, 0]))
+    scene.add(Point([0, 0, 1]))
+    scene.add(Group([unit_box(), unit_box((2, 0, 0))]), fill="red")
     primitives = scene.primitives()
     assert len(of_type(primitives, Path)) == 1
     assert len(of_type(primitives, Marker)) == 1
@@ -113,7 +113,7 @@ def test_label_sits_at_its_anchor():
 
 def test_line_label_at_line_anchor():
     scene = Scene()
-    scene.add(BaseLine([0, 0, 0], [4, 0, 0]), label="x", label_at="near end")
+    scene.add(Line([0, 0, 0], [4, 0, 0]), label="x", label_at="near end")
     (label,) = of_type(scene.primitives(), Label)
     np.testing.assert_allclose(label.position, [3, 0, 0])
 
@@ -133,7 +133,7 @@ def test_face_styles_by_name_and_index():
     )
     faces = of_type(scene.primitives(), Face)
     fills = [f.style.fill for f in faces]
-    assert fills[BaseBox.FACE_NAMES.index("top")] == "blue"
+    assert fills[Box.FACE_NAMES.index("top")] == "blue"
     assert fills[2] == "red" and faces[2].style.opacity == 0.5
     assert fills.count("white") == 4
 
@@ -141,7 +141,7 @@ def test_face_styles_by_name_and_index():
 def test_face_styles_only_override_what_they_set():
     scene = Scene()
     scene.add(unit_box(), fill="white", stroke="black", face_styles={"top": Style(fill="blue")})
-    top = of_type(scene.primitives(), Face)[BaseBox.FACE_NAMES.index("top")]
+    top = of_type(scene.primitives(), Face)[Box.FACE_NAMES.index("top")]
     assert top.style.stroke == "black"
 
 
@@ -153,7 +153,7 @@ def test_unknown_faces_raise(bad):
 
 def test_face_styles_need_a_shape():
     with pytest.raises(TypeError):
-        Scene().add(BaseLine([0, 0, 0], [1, 0, 0]), face_styles={0: Style()})
+        Scene().add(Line([0, 0, 0], [1, 0, 0]), face_styles={0: Style()})
 
 
 # ---------------------------------------------------------------- labels
@@ -197,7 +197,7 @@ def frame_paths(scene):
 
 def test_frame_of_a_shape_follows_its_axes():
     scene = Scene()
-    box = scene.add(BaseBox([1, 2, 3], dimensions=[2, 1, 0.5]), frame=True)
+    box = scene.add(Box([1, 2, 3], size=[2, 1, 0.5]), frame=True)
     box.rotate("z", 90, about="center")  # after adding: the frame must follow
     paths = frame_paths(scene)
     assert len(paths) == 3
@@ -209,14 +209,14 @@ def test_frame_of_a_shape_follows_its_axes():
 
 def test_frame_sticks_out_of_the_shape():
     scene = Scene()
-    scene.add(BaseBox([0, 0, 0], dimensions=[2, 1, 0.5]), frame=True)
+    scene.add(Box([0, 0, 0], size=[2, 1, 0.5]), frame=True)
     lengths = [np.linalg.norm(p.points[1] - p.points[0]) for p in frame_paths(scene)]
     np.testing.assert_allclose(lengths, 1.5)  # 0.75 of the longest side; longer than every half side
 
 
 def test_frame_colors_labels_and_style():
     scene = Scene()
-    box = scene.add(BaseBox([0, 0, 0], dimensions=[1, 1, 1]))
+    box = scene.add(Box([0, 0, 0], size=[1, 1, 1]))
     scene.add_frame(box, length=2, line_width=3)
     primitives = scene.primitives()
     paths = frame_paths(scene)
@@ -242,6 +242,6 @@ def test_world_frame_at_origin_and_at_a_point():
 
 def test_frame_needs_a_shape_or_a_point():
     with pytest.raises(TypeError):
-        Scene().add(BaseLine([0, 0, 0], [1, 0, 0]), frame=True)
+        Scene().add(Line([0, 0, 0], [1, 0, 0]), frame=True)
     with pytest.raises(TypeError):
         Scene().add_frame([1, 2])
