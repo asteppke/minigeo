@@ -64,11 +64,21 @@ Groups
 .. autoclass:: Group
    :members: add, remove, center, anchor, place, rotate, copy
 
+Frames and joints
+=================
+
+.. automodule:: minigeo.frames
+   :no-members:
+
+.. autoclass:: Frame
+   :members: fixed, prismatic, revolute, value, move, attach, detach, attached, pose, local_pose,
+             origin, axes, axis, to_world, to_local, root, walk, apply_transform, rotate
+
 Transforms
 ==========
 
 .. autoclass:: Transform
-   :members: translate, rotate, rotate_x, rotate_y, rotate_z, scale, shear, apply, apply_to_vertices
+   :members: translate, rotate, rotate_x, rotate_y, rotate_z, scale, shear, in_frame, apply, apply_to_vertices
 
 .. autofunction:: minigeo.transform.split_rotation
 

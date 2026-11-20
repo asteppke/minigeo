@@ -54,3 +54,6 @@ MANIFEST
 .ruff_cache/
 .venv/
 .jupyter_ystore.db
+
+# outputs of the example scripts
+examples/*.html

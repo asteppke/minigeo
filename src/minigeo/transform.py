@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:  # only for type hints; avoids a circular import
-    from .geometry import Geometry
+    from .frames import Frame
+    from .geometry import Geometry, Shape
 
 
 def rotate_arbitrary_vector_matrix(
@@ -272,6 +273,28 @@ class Transform:
             self.rotate_z(angle, in_degrees)
         else:
             raise ValueError("Invalid axis. Choose from 'x', 'y', or 'z' or provide a rotation axis vector.")
+        return self
+
+    def in_frame(self, frame: Frame | Shape) -> Transform:
+        """
+        Read this transform in the coordinates of a frame or shape instead of the world's.
+
+        Translations then go along the frame's axes x', y', z', and rotations turn about its
+        axes through its origin. The frame's current position is used, so apply the result
+        right away (the frame may move later).
+
+        Args:
+            frame (Frame or Shape): Anything with a rigid ``pose``.
+
+        Returns:
+            Transform: Self to allow method chaining.
+
+        Example:
+            >>> Transform().translate([0.1, 0, 0]).in_frame(x) @ carriage  # along x's own axis
+            >>> Transform().rotate("z", 30).in_frame(box) @ box            # about the box's z'
+        """
+        pose = frame.pose.matrix
+        self.matrix = pose @ self.matrix @ np.linalg.inv(pose)
         return self
 
     def apply(self, other: Geometry) -> Geometry:

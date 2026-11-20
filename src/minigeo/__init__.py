@@ -10,6 +10,7 @@ Example:
 
 from importlib.metadata import PackageNotFoundError, version
 
+from .frames import Frame
 from .geometry import (
     Angle,
     Axis,
@@ -44,6 +45,7 @@ __all__ = [
     "Cone",
     "Cylinder",
     "Dimension",
+    "Frame",
     "Group",
     "Line",
     "Plane",

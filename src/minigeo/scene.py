@@ -22,6 +22,7 @@ from typing import TypeVar
 
 import numpy as np
 
+from .frames import Frame
 from .geometry import Geometry, Shape
 from .groups import Group
 from .render import Label, Path, Primitive, bounds, to_primitives, type_style
@@ -70,12 +71,12 @@ class SceneFrame:
     """
     The axes of a coordinate frame, drawn as three arrows with labels.
 
-    For a shape these are its own axes x', y', z' at its center; otherwise the world axes
-    x, y, z at a point. Both are looked up when the scene is drawn, so the frame follows a
-    shape that moves or turns.
+    For a shape these are its own axes x', y', z' at its center, for a :class:`Frame` its
+    axes at its origin; otherwise the world axes x, y, z at a point. They are looked up when
+    the scene is drawn, so the arrows follow a shape or frame that moves or turns.
     """
 
-    target: Shape | np.ndarray | None
+    target: Shape | Frame | np.ndarray | None
     length: float | None
     labels: tuple[str, str, str]
     colors: tuple[str, str, str]
@@ -88,6 +89,8 @@ class SceneFrame:
             # long enough to stick out of the shape along its longest side
             length = self.length or 0.75 * float(np.ptp(shape.local_vertices, axis=0).max())
             return shape.center, shape.axes, length
+        if isinstance(self.target, Frame):
+            return self.target.origin, self.target.axes, self.length or 0.5
         origin = np.zeros(3) if self.target is None else np.asarray(self.target, dtype=float)
         return origin, np.eye(3), self.length or 1.0
 
@@ -154,7 +157,7 @@ class Scene:
 
     def add_frame(
         self,
-        target: Shape | np.ndarray | None = None,
+        target: Shape | Frame | np.ndarray | None = None,
         *,
         length: float | None = None,
         labels: tuple[str, str, str] | None = None,
@@ -167,10 +170,11 @@ class Scene:
         Draw the axes of a coordinate frame as three arrows: x red, y green, z blue.
 
         Args:
-            target: A shape, for its own axes x', y', z' at its center; a point, for the
-                world axes there; or None for the world axes at the origin.
+            target: A shape, for its own axes x', y', z' at its center; a :class:`Frame`, for
+                its axes at its origin; a point, for the world axes there; or None for the
+                world axes at the origin.
             length: Length of the arrows. Default: for a shape, long enough to stick out of
-                it; for the world axes, 1.
+                it; for a frame, 0.5; for the world axes, 1.
             labels: Names at the arrow tips; default ``x′ y′ z′`` for a shape, ``x y z`` otherwise.
             colors: Colors of the three arrows and their labels.
             on_top: Paint the arrows over all faces in the SVG and matplotlib backends, so
@@ -182,12 +186,12 @@ class Scene:
             >>> scene.add_frame(box)          # the box's own axes, turning with the box
             >>> scene.add_frame(length=0.5)   # the world axes at the origin
         """
-        if target is not None and not isinstance(target, Shape):
+        if target is not None and not isinstance(target, Shape | Frame):
             target = np.asarray(target, dtype=float)
             if target.shape != (3,):
-                raise TypeError("A frame needs a shape, a point (x, y, z) or None for the origin.")
+                raise TypeError("A frame needs a shape, a Frame, a point (x, y, z) or None for the origin.")
         if labels is None:
-            labels = ("x′", "y′", "z′") if isinstance(target, Shape) else ("x", "y", "z")
+            labels = ("x′", "y′", "z′") if isinstance(target, Shape | Frame) else ("x", "y", "z")
         frame_style = (style if style is not None else Style()) | Style(**style_fields)
         self.frames.append(SceneFrame(target, length, tuple(labels), tuple(colors), frame_style, on_top))
 

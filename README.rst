@@ -37,6 +37,8 @@ Features
   with it; ``shape.rotate("x'", 30, about="center")``.
 - **Anchors**: named points such as ``"top"``, ``"bottom front left"`` or ``"near end"``, and
   ``place(anchor, at=point)`` to put things next to each other.
+- **Frames and joints**: chains of parts that carry each other, such as an XYZ stage or a
+  diffractometer, moved by sliding and turning joints: ``x.value = 0.3``.
 - **Scenes and styles**: geometry is independent of drawing; a ``Scene`` adds colors, opacity,
   dashes, arrows and labels.
 - **Backends**: SVG (vector drawings), matplotlib (3D axes) and plotly (interactive, WebGL),
@@ -44,7 +46,7 @@ Features
 
 A first scene
 -------------
-.. code-block::
+.. code-block:: python
 
    from minigeo import Box, Cylinder, Line, Scene, Style
 
@@ -74,7 +76,7 @@ All backends take the same view options: ``elev``, ``azim`` and ``vertical_axis`
 
 Geometry and transforms
 -----------------------
-.. code-block::
+.. code-block:: python
 
    from minigeo import Box, Transform
 
@@ -98,7 +100,7 @@ Lines use TikZ's positions (``"start"``, ``"near start"``, ``"midway"``, ``"near
 
 Vectors, planes, angles and dimensions
 --------------------------------------
-.. code-block::
+.. code-block:: python
 
    from minigeo import Angle, Dimension, Plane, Vector
 
@@ -128,12 +130,39 @@ For orientation, ``scene.add(shape, frame=True)`` draws the shape's own axes x',
 arrows that turn with it, and ``scene.add_frame()`` draws the world axes x, y, z at the
 origin (or ``scene.add_frame(point)`` anywhere else).
 
+Frames and joints
+-----------------
+A ``Frame`` is a coordinate system that carries other frames and geometry. A joint is a frame
+whose position on its parent is set by one number: ``prismatic`` joints slide, ``revolute``
+joints turn (in degrees). Build the parts as usual and attach them to the joint that carries
+them:
+
+.. code-block:: python
+
+   from minigeo import Box, Frame, Transform
+
+   base = Frame()
+   x = base.prismatic("x", limits=(0, 0.5))      # X carries Y,
+   y = x.prismatic("y")                          # Y carries Z
+   z = y.prismatic("z")
+
+   carriage = x.attach(Box([0, 0, 0], size=(0.3, 1, 0.05)))
+   head = z.attach(Box(carriage.anchor("top"), size=(0.1, 0.1, 0.1), anchor="bottom"))
+
+   x.value = 0.3     # absolute: the carriage and the head move to x = 0.3
+   x.move(0.05)      # relative, along the joint's axis
+   Transform().translate([0, 0.1, 0]).in_frame(x) @ head   # along x's own axes
+
+Positions and transforms are given in world coordinates as things stand now, so anchors,
+``place`` and ``Transform() @ part`` work as before; attached parts are kept relative to their
+frame and move along with it afterwards.
+
 Animations
 ----------
 ``scene.animate(update, frames)`` draws the scene, then calls ``update(i)`` before each further
 frame, for example to turn a box a little:
 
-.. code-block::
+.. code-block:: python
 
    scene.animate(lambda i: box.rotate("x'", 10, about="center"), frames=36)          # plotly
    scene.animate(lambda i: box.rotate("x'", 10, about="center"), frames=36,
@@ -182,12 +211,17 @@ with everything installed (it takes a minute), Colab installs minigeo in the fir
      - a box turning around its own axis, with plotly and matplotlib
      - `launch <https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2Fanimations.ipynb>`__
      - `open <https://colab.research.google.com/github/asteppke/minigeo/blob/main/examples/animations.ipynb>`__
+   * - ``examples/joints.ipynb``
+     - frames and joints: a hinge, a serial XYZ stage and a θ–2θ scan, animated
+     - `launch <https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2Fjoints.ipynb>`__
+     - `open <https://colab.research.google.com/github/asteppke/minigeo/blob/main/examples/joints.ipynb>`__
    * - ``examples/Cristallina.ipynb``
      - a sketch of an X-ray scattering experiment, with x pointing up
      - `launch <https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2FCristallina.ipynb>`__
      - `open <https://colab.research.google.com/github/asteppke/minigeo/blob/main/examples/Cristallina.ipynb>`__
 
-``examples/table_scene.py`` builds the scene from the picture above, entirely with anchors.
+``examples/table_scene.py`` builds the scene from the picture above, entirely with anchors;
+``examples/xyz_stage.py`` builds and animates the XYZ stage.
 
 Contributing
 ------------
