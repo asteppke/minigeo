@@ -119,14 +119,15 @@ def _plain_math(math: str) -> str:
         layout = MathTextParser("path").parse(f"${math}$", dpi=72, prop=FontProperties(size=10))
     except ValueError as error:
         raise ValueError(f"Cannot typeset the math {math!r}:\n{error}") from None
-    glyphs = sorted(layout.glyphs, key=lambda glyph: glyph[3])  # left to right
+    glyphs = sorted(layout.glyphs, key=lambda glyph: glyph[-2])  # left to right
     if not glyphs:
         return ""
     biggest = max(glyph[1] for glyph in glyphs)
-    baseline = np.median([glyph[4] for glyph in glyphs if glyph[1] == biggest])
+    baseline = np.median([glyph[-1] for glyph in glyphs if glyph[1] == biggest])
 
     result, current = [], ""
-    for _, size, code, _, y in glyphs:
+    for glyph in glyphs:
+        size, code, y = glyph[1], glyph[2], glyph[-1]
         if size < biggest and y > baseline + 1:
             place = "sup"
         elif size < biggest and y < baseline - 1:

@@ -3,8 +3,8 @@ Measuring
 =========
 
 Besides drawing, minigeo can calculate with geometry: vectors know dot and cross products,
-planes know distances and intersections, and angles and dimension lines show the results
-in the picture.
+planes and shapes know where lines meet them, and angles and dimension lines show the
+results in the picture.
 
 Vectors
 =======
@@ -79,6 +79,30 @@ and ``intersect``.
    scene.add(ray, stroke="C3")
    scene.add(Point(hit), fill="C3")
    print("meets the plane at", hit.round(3))
+
+Lines through shapes
+====================
+
+``shape.intersect(line)`` returns the points where a line meets a shape, sorted along the
+line: usually where it enters and where it leaves. Spheres and cylinders are met exactly,
+as the round shapes they stand for; all other shapes at the flat faces they are drawn
+with. Like a plane, a shape takes the line as infinite; ``segment=True`` keeps only the
+points between its start and end. Polylines and curves work too, piece by piece.
+
+.. minigeo-example::
+
+   box = Box([0, 0, 0], size=1)
+   ball = Sphere([2, 0, 0.2], radius=0.6)
+   ray = Line([-1.2, -0.3, -0.3], [3.2, 0.3, 0.5])
+
+   scene = Scene()
+   scene.add(box, fill="C0", opacity=0.3)
+   scene.add(ball, fill="C1", opacity=0.3)
+   scene.add(ray, stroke="C3")
+   for shape in (box, ball):
+       for point in shape.intersect(ray):
+           scene.add(Point(point), fill="C3")
+   print(ball.intersect(ray).round(3))
 
 Dimension lines
 ===============

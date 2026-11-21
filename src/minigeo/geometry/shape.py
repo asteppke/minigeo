@@ -198,6 +198,31 @@ class Shape(Geometry):
         vertices = self.vertices
         return [vertices[face] for face in face_indices]
 
+    # ------------------------------------------------------------ meeting lines
+
+    def intersect(self, line, *, segment: bool = False) -> np.ndarray:
+        """
+        The points where a line meets the shape, sorted along the line.
+
+        Spheres and cylinders are met exactly, other shapes at their flat faces
+        (see :func:`minigeo.intersect.intersections`).
+
+        Args:
+            line: A Line, Vector, Axis, Polyline, Curve, or a pair of points ``(start, end)``.
+            segment: Only points between the line's start and end; otherwise the line
+                is extended in both directions, as in :meth:`Plane.intersect`.
+
+        Returns:
+            An ``(n, 3)`` array of points; empty if the line misses the shape.
+
+        Example:
+            >>> box = Box([0, 0, 0], size=1)
+            >>> box.intersect(Line([-1, 0, 0], [1, 0, 0]))  # in at x = -0.5, out at 0.5
+        """
+        from ..intersect import intersections
+
+        return intersections(line, self, segment=segment)
+
     # ------------------------------------------------------------ transforming
 
     def apply_transform(self, transform: Transform) -> None:

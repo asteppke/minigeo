@@ -34,7 +34,7 @@ axes x', y', z', anchors, transforms, faces and edges.
 
 .. autoclass:: minigeo.geometry.Shape
    :members: center, axes, anchor, place, rotate, copy, apply_transform, vertices, local_vertices,
-             face_indices, edge_indices, faces, edges, default_anchor, is_closed
+             face_indices, edge_indices, faces, edges, intersect, default_anchor, is_closed
    :no-show-inheritance:
 
 Curves and meshes
@@ -71,6 +71,12 @@ Planes, angles and dimensions
    :members: between, degrees, radians, is_right, anchor
 .. autoclass:: Dimension
    :members: length, text, anchor
+
+Lines meeting shapes
+====================
+
+.. automodule:: minigeo.intersect
+   :members: intersections
 
 Math in labels
 ==============

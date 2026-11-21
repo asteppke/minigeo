@@ -35,7 +35,8 @@ Features
 - **Curves and meshes**: ``Polyline`` and ``Curve`` (any function of ``t``, e.g. a helix), and
   ``Mesh`` for any faces; read and write OBJ and STL files with numpy only.
 - **Measuring**: ``Vector`` (with dot and cross products), ``Plane`` (distances, projections,
-  intersections), ``Angle`` arcs and ``Dimension`` lines, as in technical drawings.
+  intersections), where lines enter and leave shapes (``box.intersect(line)``), ``Angle`` arcs
+  and ``Dimension`` lines, as in technical drawings.
 - **Transforms**: translation, rotation (about any axis and any point), scaling and shear as
   composable 4x4 matrices: ``t @ shape``, ``t1 @ t2``.
 - **Own axes**: every shape has a pose with its own perpendicular axes x', y', z' that turn

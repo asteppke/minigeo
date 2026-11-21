@@ -73,17 +73,15 @@ class ExactShape:
         return (unit @ self.to_world.T)[:, :3]
 
 
-def exact_shape(geometry, primitives: list[Primitive]) -> ExactShape | None:
+def unit_map(geometry) -> tuple[str, np.ndarray] | None:
     """
-    The exact shape for a geometry and its styled faces, or None to draw the faces instead.
+    For a sphere or cylinder (not a cone): its kind and the ``(4, 4)`` affine map from the
+    unit shape to world coordinates. None for other geometries, or if the shape was flattened.
 
-    Spheres and cylinders (not cones) qualify, unless their faces are styled in a way an exact
-    shape cannot show: side faces of a cylinder in different styles, or faces without fill.
-
-    Args:
-        geometry: The geometry, e.g. a :class:`~minigeo.Cylinder`.
-        primitives: Its primitives with their complete styles, as the scene produces them
-            (face styles of a cylinder: its side faces, then bottom, then top).
+    Example:
+        >>> kind, to_world = unit_map(Sphere([1, 0, 0], radius=2))
+        >>> kind, to_world[:3, 3]
+        ('sphere', array([1., 0., 0.]))
     """
     if isinstance(geometry, Sphere):
         kind, unit = "sphere", Sphere([0, 0, 0], 1, segments=geometry.segments)
@@ -91,19 +89,7 @@ def exact_shape(geometry, primitives: list[Primitive]) -> ExactShape | None:
         kind, unit = "cylinder", Cylinder([0, 0, 0], 1, 1, segments=geometry.segments)
     else:
         return None
-    faces = [p for p in primitives if isinstance(p, Face)]
-    if len(faces) != len(primitives) or len(unit.local_vertices) != len(geometry.local_vertices):
-        return None
-    if kind == "sphere":
-        if len({face.style for face in faces}) != 1:
-            return None
-        styles = (faces[0].style,)
-    else:
-        sides = len(geometry.side_face_indices)
-        if len({face.style for face in faces[:sides]}) != 1:
-            return None  # differently styled side faces: draw the faces themselves
-        styles = (faces[0].style, faces[sides].style, faces[sides + 1].style)
-    if any(style.fill == "none" for style in styles):
+    if len(unit.local_vertices) != len(geometry.local_vertices):
         return None
 
     # Every transform is affine, so the shape is an affine image of the unit shape.
@@ -117,4 +103,35 @@ def exact_shape(geometry, primitives: list[Primitive]) -> ExactShape | None:
     to_world = geometry.pose.matrix @ to_local
     if abs(np.linalg.det(to_world[:3, :3])) < 1e-15:
         return None  # flattened completely
+    return kind, to_world
+
+
+def exact_shape(geometry, primitives: list[Primitive]) -> ExactShape | None:
+    """
+    The exact shape for a geometry and its styled faces, or None to draw the faces instead.
+
+    Spheres and cylinders (not cones) qualify, unless their faces are styled in a way an exact
+    shape cannot show: side faces of a cylinder in different styles, or faces without fill.
+
+    Args:
+        geometry: The geometry, e.g. a :class:`~minigeo.Cylinder`.
+        primitives: Its primitives with their complete styles, as the scene produces them
+            (face styles of a cylinder: its side faces, then bottom, then top).
+    """
+    mapped = unit_map(geometry)
+    faces = [p for p in primitives if isinstance(p, Face)]
+    if mapped is None or len(faces) != len(primitives):
+        return None
+    kind, to_world = mapped
+    if kind == "sphere":
+        if len({face.style for face in faces}) != 1:
+            return None
+        styles = (faces[0].style,)
+    else:
+        sides = len(geometry.side_face_indices)
+        if len({face.style for face in faces[:sides]}) != 1:
+            return None  # differently styled side faces: draw the faces themselves
+        styles = (faces[0].style, faces[sides].style, faces[sides + 1].style)
+    if any(style.fill == "none" for style in styles):
+        return None
     return ExactShape(kind, to_world, styles)

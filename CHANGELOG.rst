@@ -45,3 +45,8 @@ Version 0.6.0
 - Mesh support for geometry objects
 - LaTeX label support from matplotlib for render backends
 
+Version 0.6.1
+==============
+
+- Improved handling of line intersections with geometry objects
+- Small bug fixes
