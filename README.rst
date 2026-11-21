@@ -228,12 +228,34 @@ drawn like the SVG picture. Labels are LaTeX (``"$2\theta$"``).
 
 Installation
 ------------
-Clone the repository and install it with the backends you want (``mpl``, ``svg``, ``plotly``,
+You can install the core minigeo library from PyPI using:
+
+.. code-block:: bash
+
+    pip install minigeo 
+
+which only installs the library itself and the required numpy dependency. 
+
+For the full installation with all optional extras, use:
+
+.. code-block:: bash
+
+    pip install "minigeo[all]"
+
+which installs the matplotlib, svg, plotly and ray tracing backends, as well as the optional fast ray tracer with numba.
+Individual parts can be selected by specifying the desired extras instead of ``all``.
+
+.. code-block:: bash
+
+    pip install "minigeo[mpl,svg,plotly,ray,fast]"
+
+
+The development version can be installed from this repository. Clone it and install with the desired the backends you want (``mpl``, ``svg``, ``plotly``,
 ``ray``), or all of them, and optionally ``fast`` for a faster ray tracer (numba):
 
 .. code-block:: bash
 
-    pip install ".[all]"
+    pip install -e ".[mpl,svg,plotly,ray,fast]"
 
 For development (tests, linting and the documentation):
 
