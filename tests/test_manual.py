@@ -61,3 +61,15 @@ def test_options_are_parsed(tmp_path):
     )
     with pytest.raises(ValueError, match="option"):
         minigeo_manual.parse_options({"colour": "red"})
+
+
+def test_render_option_passes_settings_and_is_shown():
+    options = minigeo_manual.parse_options(
+        {"backend": "raytrace", "render": 'look="cel", palette=["whitesmoke", "slategray"], bands=4'}
+    )
+    assert options["render"] == {"look": "cel", "palette": ["whitesmoke", "slategray"], "bands": 4}
+    note = minigeo_manual.render_note(options)
+    assert note.startswith('# drawn with scene.render("raytrace", look="cel"')
+    assert all(len(line) <= 64 for line in note.splitlines())
+    with pytest.raises(ValueError, match="keyword"):
+        minigeo_manual.render_arguments('"cel"')

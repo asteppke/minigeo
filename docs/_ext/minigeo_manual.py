@@ -18,12 +18,16 @@ pytest, using :func:`examples_in` and :func:`run_example` from this module.
 Options:
     width: Width of the picture in pixels (default 220).
     backend: ``svg`` (default), ``raytrace`` or ``matplotlib``.
-    elev, azim, vertical-axis: The view, as in ``scene.render``. When these or ``backend``
-        are given, the shown code ends with a comment saying how the picture was drawn.
+    elev, azim, vertical-axis: The view, as in ``scene.render``.
+    render: Further keyword arguments for ``scene.render``, e.g. ``look="cel", bands=4``.
+
+When any option but ``width`` is given, the shown code ends with a comment saying how the
+picture was drawn.
 """
 
 from __future__ import annotations
 
+import ast
 import base64
 import contextlib
 import html
@@ -80,6 +84,7 @@ def picture(scene, options: dict) -> tuple[str, bytes]:
     width = int(options.get("width", DEFAULT_WIDTH))
     backend = options.get("backend", "svg")
     view = {key: options[key] for key in ("elev", "azim", "vertical_axis") if key in options}
+    view.update(options.get("render", {}))
     if backend == "svg":
         return "image/svg+xml", str(scene.render("svg", width=width, **view)).encode()
     if backend == "raytrace":  # twice the pixels, for sharp pictures on fine screens
@@ -107,13 +112,46 @@ def output_html(result: Result, options: dict) -> str:
 def render_note(options: dict) -> str:
     """A comment for the shown code, saying how the picture was drawn if not with the defaults."""
     view = [key for key in ("elev", "azim", "vertical_axis") if key in options]
-    if not view and options.get("backend", "svg") == "svg":
+    if not view and not options.get("render") and options.get("backend", "svg") == "svg":
         return ""
     arguments = [f'"{options.get("backend", "svg")}"']
     for key in view:
         value = options[key]
         arguments.append(f"{key}={value:g}" if isinstance(value, float) else f'{key}="{value}"')
-    return f"# drawn with scene.render({', '.join(arguments)})"
+    for key, value in options.get("render", {}).items():
+        arguments.append(f"{key}={_python(value)}")
+    return _wrapped_comment("drawn with scene.render(", arguments, ")")
+
+
+def _python(value) -> str:
+    """A literal as Python code, with double quotes as in the examples."""
+    if isinstance(value, str):
+        return f'"{value}"'
+    if isinstance(value, list | tuple):
+        inner = ", ".join(_python(item) for item in value)
+        return f"[{inner}]" if isinstance(value, list) else f"({inner})"
+    return repr(value)
+
+
+def _wrapped_comment(start: str, arguments: list[str], end: str, limit: int = 64) -> str:
+    """A comment ``# start a, b, c end``, continued on further comment lines when too long."""
+    lines, current = [], f"# {start}"
+    for k, argument in enumerate(arguments):
+        piece = argument + (", " if k < len(arguments) - 1 else end)
+        if len(current) + len(piece.rstrip()) > limit and not current.endswith("("):
+            lines.append(current.rstrip())
+            current = "#     "
+        current += piece
+    lines.append(current)
+    return "\n".join(lines)
+
+
+def render_arguments(text: str) -> dict:
+    """The keyword arguments written in a ``:render:`` option, e.g. ``look="cel", bands=4``."""
+    call = ast.parse(f"f({text})", mode="eval").body
+    if call.args:
+        raise ValueError(f"The render option takes only keyword arguments, not {text!r}.")
+    return {keyword.arg: ast.literal_eval(keyword.value) for keyword in call.keywords}
 
 
 # ---------------------------------------------------------------- finding examples in pages
@@ -132,6 +170,8 @@ def parse_options(raw: dict[str, str]) -> dict:
             options[name] = float(value)
         elif name == "vertical-axis":
             options["vertical_axis"] = value
+        elif name == "render":
+            options["render"] = render_arguments(value)
         elif name == "backend":
             if value not in BACKENDS:
                 raise ValueError(f"Unknown backend {value!r}; use one of {', '.join(BACKENDS)}.")
@@ -182,6 +222,7 @@ class MinigeoExample(SphinxDirective):
         "elev": float,
         "azim": float,
         "vertical-axis": lambda value: directives.choice(value, ("x", "y", "z")),
+        "render": directives.unchanged,
     }
 
     def run(self) -> list[nodes.Node]:

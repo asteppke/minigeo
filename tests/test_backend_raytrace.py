@@ -163,7 +163,7 @@ def test_translucent_faces_cast_lighter_shadows():
         scene.add(Box([0, 0, 0], size=(4, 4, 0.1), anchor="top"), fill="white", stroke="none")
         scene.add(Rectangle([0, 0, 1], size=(4, 4)), fill="white", opacity=opacity, stroke="none")
         surfaces = raytrace._Surfaces(raytrace._Contents.collect(scene).surfaces, 5)
-        lighting = raytrace._Lighting(surfaces, raytrace.Camera().light, 0.4, True)
+        lighting = raytrace._Lighting(surfaces, raytrace.Camera().light, raytrace.Look(), 5)
         return lighting.light_reaching(np.array([[0.0, 0.0, 0.001]]))[0]
 
     assert floor_brightness(1.0) == 0
@@ -328,3 +328,115 @@ def test_flat_and_edge_on_faces():
     Transform().rotate("x", 90, about=[2, 0, 0]) @ scene.items[1].geometry
     image = render(scene, **TOP_DOWN, width=200)  # the second one is seen edge-on
     assert coverage(image).sum() > 0
+
+
+# ---------------------------------------------------------------- looks
+
+
+def floor_and_block():
+    scene = Scene()
+    scene.add(Box([0, 0, 0], size=(4, 4, 0.1), anchor="top"), fill="white", stroke="none")
+    scene.add(Box([0, 0, 0], size=(1, 1, 1), anchor="bottom"), fill="white", stroke="none")
+    return scene
+
+
+def test_looks_by_name_and_with_changes():
+    assert set(raytrace.LOOKS) >= {"natural", "soft", "cel", "diagram", "print"}
+    look = raytrace.LOOKS["diagram"].with_(bands=4)
+    assert look.bands == 4 and look.outlines
+    with pytest.raises(TypeError, match="Unknown look settings: colour"):
+        look.with_(colour="red")
+    with pytest.raises(ValueError, match="Unknown look"):
+        render(Scene(), look="comic")
+    for wrong in ({"shading": "toon"}, {"bands": 1}, {"ambient": 2}, {"occlusion": -1}, {"palette": ()}):
+        with pytest.raises(ValueError):
+            raytrace.Look(**wrong)
+
+
+def test_old_keywords_still_work():
+    scene = floor_and_block()
+    assert render(scene, width=60, shadows=False, ambient=1).width == 60
+
+
+def test_cel_shading_has_few_brightness_levels():
+    scene = Scene()
+    scene.add(Sphere([0, 0, 0], radius=1), fill="white", stroke="none")
+    smooth = render(scene, width=120, samples=1, shadows=False)
+    cel = render(scene, width=120, samples=1, look="cel", outlines=False, bands=3, shadows=False)
+    inside = coverage(smooth) == 1
+    assert len(np.unique(smooth.pixels[inside][:, 0])) > 20
+    assert len(np.unique(cel.pixels[coverage(cel) == 1][:, 0])) <= 3
+
+
+def test_flat_shading_shows_plain_colors():
+    image = render(floor_and_block(), width=100, samples=1, look=raytrace.Look(shading="flat"))
+    colors = image.pixels[coverage(image) == 1][:, :3]
+    assert (colors == 255).all()  # no light and shade: every visible face is plain white
+
+
+def test_occlusion_darkens_the_floor_next_to_the_block():
+    scene = floor_and_block()
+    view = view_of(scene)
+    open_floor, corner = [1.8, -1.8, 0], [0.55, -0.55, 0]
+    plain = render(scene, shadows=False, ambient=0.6)
+    occluded = render(scene, shadows=False, ambient=0.6, occlusion=1)
+    assert pixel(occluded, view, corner)[0] < pixel(plain, view, corner)[0] - 10
+    assert abs(int(pixel(occluded, view, open_floor)[0]) - int(pixel(plain, view, open_floor)[0])) <= 2
+
+
+def test_openness_of_open_and_enclosed_points():
+    scene = floor_and_block()
+    surfaces = raytrace._Surfaces(raytrace._Contents.collect(scene).surfaces, 5)
+    lighting = raytrace._Lighting(surfaces, raytrace.Camera().light, raytrace.Look(occlusion=1), 5)
+    up = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]])
+    points = np.array([[1.9, 1.9, 0.0], [0.5001, 0.0, 0.0]])  # open floor; right next to the block
+    openness = lighting.openness(points, up)
+    assert openness[0] == pytest.approx(1)
+    assert 0.3 < openness[1] < 0.9
+
+
+def test_sphere_directions_cover_the_sphere():
+    for turn in range(raytrace.OCCLUSION_TURNS):
+        directions = raytrace._sphere_directions(64, turn)
+        assert np.allclose(np.linalg.norm(directions, axis=1), 1)
+        assert np.allclose(directions.mean(axis=0), 0, atol=0.05)
+    assert not np.allclose(raytrace._sphere_directions(8, 0), raytrace._sphere_directions(8, 1))
+
+
+def test_outlines_around_objects_and_at_creases():
+    scene = Scene()
+    scene.add(Box([0, 0, 0], size=(1, 1, 1)), fill="white", stroke="none")
+    view = view_of(scene)
+    plain = render(scene, shadows=False, ambient=1, background="white")
+    outlined = render(scene, shadows=False, ambient=1, background="white", outlines=True, outline_color="red")
+    edge = pixel(outlined, view, [0.5, -0.5, 0])  # the vertical front edge, a crease
+    assert edge[0] > 200 and edge[1] < 100
+    assert (pixel(plain, view, [0.5, -0.5, 0])[:3] == 255).all()
+    middle = pixel(outlined, view, [0, -0.5, 0])  # the middle of the front face
+    assert (middle[:3] == 255).all()
+    assert (outlined.pixels[..., 1] < 100).sum() > (plain.pixels[..., 1] < 100).sum()
+
+
+def test_outlines_follow_exact_spheres_but_not_facet_seams():
+    scene = Scene()
+    scene.add(Cone([0, 0, 0], radius=1, height=1, segments=32), fill="white", stroke="none")
+    image = render(scene, **TOP_DOWN, ambient=1, shadows=False, outlines=True, background="white")
+    middle_ring = image.pixels[image.height // 2, image.width // 2 + 20 : image.width // 2 + 60]
+    assert (middle_ring[:, 1] > 200).all()  # no outline between the cone's facets
+
+
+def test_palette_and_grayscale():
+    scene = Scene()
+    scene.add(Box([0, 0, 0], size=(1, 1, 1)), fill="#e05050", stroke="none")
+    snapped = render(scene, width=80, look="natural", ambient=1, shadows=False, palette=["firebrick", "navy"])
+    colors = {tuple(c[:3]) for c in snapped.pixels[coverage(snapped) == 1]}
+    assert colors == {(178, 34, 34)}
+    gray = render(scene, width=80, look="print")
+    rgb = gray.pixels[..., :3].astype(int)
+    assert (rgb[..., 0] == rgb[..., 1]).all() and (rgb[..., 1] == rgb[..., 2]).all()
+
+
+def test_every_named_look_renders():
+    scene = floor_and_block()
+    for name in raytrace.LOOKS:
+        assert render(scene, width=60, look=name).height > 0

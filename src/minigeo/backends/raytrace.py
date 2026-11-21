@@ -14,6 +14,11 @@ lies in front of them: the back edges of a box stay hidden. Paths marked ``on_to
 coordinate frames) are always drawn, and a label is only hidden by *other* objects than the
 one it belongs to.
 
+A *look* changes how surfaces are shaded, for diagrams rather than photos: cel shading in a
+few bands, ambient occlusion that darkens corners and creases, outlines around objects and
+along sharp edges, a reduced color palette, or gray tones for print. See :class:`Look` and
+:data:`LOOKS`.
+
 The camera is orthographic, as in the other backends, so the same ``elev``, ``azim`` and
 ``vertical_axis`` give the same picture. Line widths, text and margins are measured in pixels
 of a 500-pixel-wide image: a wider image has more pixels, but looks the same.
@@ -25,17 +30,19 @@ and image files).
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from pathlib import Path as FilePath
 
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 from ..camera import Camera
+from ..colors import to_rgb
 from ..geometry import Cone, Cylinder, Geometry, Sphere
 from ..groups import Group
 from ..render import Face, Label, Marker, Path, Primitive, to_primitives
 from ..style import Style, color_value
+from ..transform import Transform
 
 #: Line widths, text sizes and margins are given in pixels of an image this wide.
 REFERENCE_WIDTH = 500
@@ -54,6 +61,85 @@ CIRCLE_POINTS = 96
 
 #: The size of an arrow tip, in multiples of the line width (as in the SVG backend).
 ARROW_LENGTH = 6.0
+
+
+SHADINGS = ("smooth", "cel", "flat")
+
+
+@dataclass(frozen=True)
+class Look:
+    """
+    How surfaces are shaded. Use one of the :data:`LOOKS` by name, or change single settings:
+    ``scene.render("raytrace", look="diagram", bands=4)``.
+
+    Attributes:
+        shading: ``"smooth"`` (light falls off gradually), ``"cel"`` (a few flat bands, as in
+            comics and technical illustrations) or ``"flat"`` (no light, only the colors).
+        bands: Brightness steps for cel shading (at least 2).
+        shadows: Whether surfaces cast shadows.
+        ambient: Brightness without direct light, from 0 (black) to 1 (no shading).
+        occlusion: Ambient occlusion, from 0 (off) to 1: darkens corners, creases and places
+            close to other surfaces, where less light from the surroundings arrives.
+        occlusion_radius: How far surfaces darken each other, as a fraction of the scene's size.
+        occlusion_samples: Directions tested per point; more is smoother but slower.
+        outlines: Draw lines around objects and along sharp edges (from the rendered picture,
+            so they follow exact spheres and cylinders too).
+        outline_color: Color of the outlines.
+        outline_width: Width of the outlines, in pixels of a 500-pixel-wide image.
+        crease_angle: Edges where the surface bends by more than this angle (degrees) are outlined.
+        palette: Colors that surface colors are replaced with (each with the nearest one), for a
+            restrained, consistent set of colors; None keeps the colors.
+        grayscale: Turn the finished picture into gray tones, e.g. for printing.
+    """
+
+    shading: str = "smooth"
+    bands: int = 3
+    shadows: bool = True
+    ambient: float = AMBIENT
+    occlusion: float = 0.0
+    occlusion_radius: float = 0.15
+    occlusion_samples: int = 24
+    outlines: bool = False
+    outline_color: str = "black"
+    outline_width: float = 1.5
+    crease_angle: float = 40.0
+    palette: tuple[str, ...] | None = None
+    grayscale: bool = False
+
+    def __post_init__(self):
+        if self.shading not in SHADINGS:
+            raise ValueError(f"Unknown shading {self.shading!r}; use one of {', '.join(SHADINGS)}.")
+        if self.bands < 2:
+            raise ValueError("Cel shading needs at least 2 bands.")
+        for name in ("ambient", "occlusion"):
+            if not 0 <= getattr(self, name) <= 1:
+                raise ValueError(f"{name} must be between 0 and 1.")
+        if self.occlusion_samples < 1 or self.occlusion_radius <= 0:
+            raise ValueError("occlusion_samples and occlusion_radius must be positive.")
+        if self.palette is not None:
+            object.__setattr__(self, "palette", tuple(self.palette))
+            if not self.palette:
+                raise ValueError("A palette needs at least one color.")
+
+    def with_(self, **changes) -> Look:
+        """A copy with some settings changed."""
+        known = {f.name for f in fields(self)}
+        unknown = sorted(set(changes) - known)
+        if unknown:
+            raise TypeError(
+                f"Unknown look settings: {', '.join(unknown)}; known: {', '.join(sorted(known))}."
+            )
+        return replace(self, **changes)
+
+
+#: Ready-made looks, by name.
+LOOKS: dict[str, Look] = {
+    "natural": Look(),
+    "soft": Look(shadows=False, ambient=0.55, occlusion=0.8),
+    "cel": Look(shading="cel", outlines=True),
+    "diagram": Look(shading="cel", shadows=False, ambient=0.55, occlusion=0.6, outlines=True),
+    "print": Look(shading="cel", shadows=False, ambient=0.6, occlusion=0.6, outlines=True, grayscale=True),
+}
 
 
 @dataclass
@@ -113,9 +199,9 @@ def render(
     vertical_axis: str = "z",
     margin: float = 20,
     samples: int = 3,
-    shadows: bool = True,
-    ambient: float = AMBIENT,
     background: str | None = None,
+    look: str | Look = "natural",
+    **look_changes,
 ) -> RaytracedImage:
     """
     Draw ``scene`` by ray tracing.
@@ -127,31 +213,59 @@ def render(
         margin: Empty space around the drawing, in pixels of a 500-pixel-wide image.
         samples: Rays per pixel along each direction: 3 traces 3 x 3 rays per pixel for
             smooth edges; 1 is fastest.
-        shadows: Whether surfaces cast shadows.
-        ambient: Brightness of surfaces without direct light, from 0 (black) to 1 (no shading).
         background: A background color, or None for a transparent background.
+        look: How surfaces are shaded: a name from :data:`LOOKS` (``"natural"``, ``"soft"``,
+            ``"cel"``, ``"diagram"``, ``"print"``) or a :class:`Look`.
+        **look_changes: Single settings of the look, e.g. ``shadows=False``, ``ambient=0.6``
+            or ``bands=4`` (see :class:`Look`).
 
     Example:
         >>> image = scene.render("raytrace", width=800)
         >>> image.save("scene.png")
+        >>> scene.render("raytrace", look="diagram", outline_width=2)
     """
     if samples < 1:
         raise ValueError("samples must be at least 1.")
+    if isinstance(look, str):
+        if look not in LOOKS:
+            raise ValueError(f"Unknown look {look!r}; use one of {', '.join(LOOKS)} or a Look.")
+        look = LOOKS[look]
+    look = look.with_(**look_changes)
+
     camera = Camera(elev, azim, vertical_axis)
     contents = _Contents.collect(scene)
     view = _View.fitting(contents.points(camera), camera, width, margin * width / REFERENCE_WIDTH, samples)
     surfaces = _Surfaces(contents.surfaces, view.size)
-    light = _Lighting(surfaces, camera.light, ambient, shadows)
+    if look.palette is not None:
+        surfaces.colors = _nearest_colors(surfaces.colors, look.palette)
+    lighting = _Lighting(surfaces, camera.light, look, view.size)
 
-    layers = _trace_layers(surfaces, light, view)
+    layers = _trace_layers(surfaces, lighting, view)
     canvas = _Canvas(layers, view)
+    if look.outlines:
+        canvas.outline(layers, look)
     for line in contents.lines:
         canvas.stroke(line)
     for marker in contents.markers:
         canvas.dot(marker)
     image = canvas.downsampled(background)
     _draw_labels(image, contents.labels, canvas, view)
-    return RaytracedImage(np.asarray(image))
+    pixels = np.asarray(image)
+    return RaytracedImage(_gray(pixels) if look.grayscale else pixels)
+
+
+def _nearest_colors(colors: np.ndarray, palette: tuple[str, ...]) -> np.ndarray:
+    """Each color replaced with the nearest color of the palette."""
+    choices = np.array([_rgb(color) for color in palette])
+    distances = np.linalg.norm(colors[..., None, :] - choices, axis=-1)
+    return choices[np.argmin(distances, axis=-1)]
+
+
+def _gray(pixels: np.ndarray) -> np.ndarray:
+    """The image in gray tones (by luminance), keeping transparency."""
+    luminance = pixels[..., :3].astype(float) @ np.array([0.2126, 0.7152, 0.0722])
+    gray = np.round(luminance).astype(np.uint8)
+    return np.dstack([gray, gray, gray, pixels[..., 3]])
 
 
 # ---------------------------------------------------------------- what the scene contains
@@ -163,6 +277,7 @@ class _Surface:
 
     kind: str  # "face", "sphere" or "cylinder"
     owner: int  # index of the scene item, or -1
+    piece: int = -1  # which geometry it belongs to (members of a group are different pieces)
     points: np.ndarray | None = None  # face corners
     style: Style | None = None  # face style
     to_world: np.ndarray | None = None  # sphere/cylinder: unit shape -> world (4 x 4)
@@ -191,6 +306,7 @@ class _Contents:
     markers: list[Marker]
     labels: list[_Label]
     extra_points: list[np.ndarray]
+    _piece_count: int = 0
 
     @classmethod
     def collect(cls, scene) -> _Contents:
@@ -212,8 +328,10 @@ class _Contents:
         return contents
 
     def _add(self, geometry, primitives: list[Primitive], owner: int, outlines: set) -> None:
+        self._piece_count += 1
         exact = _exact_surface(geometry, primitives, owner)
         if exact is not None:
+            exact.piece = self._piece_count
             self.surfaces.append(exact)
             ring_style = exact.part_styles[0]
             for z in (-0.5, 0.5) if exact.kind == "cylinder" else ():
@@ -234,7 +352,8 @@ class _Contents:
     def _add_face(self, face: Face, owner: int, outlines: set) -> None:
         style = face.style
         if style.fill != "none" and style.opacity > 0:
-            self.surfaces.append(_Surface("face", owner, points=np.asarray(face.points, float), style=style))
+            points = np.asarray(face.points, float)
+            self.surfaces.append(_Surface("face", owner, self._piece_count, points=points, style=style))
         else:
             self.extra_points.append(face.points)
         if style.stroke == "none":
@@ -343,7 +462,7 @@ def _circle(to_world: np.ndarray, z: float) -> np.ndarray:
 
 
 def _rgb(color: str) -> np.ndarray:
-    return np.array(ImageColor.getrgb(color_value(color))[:3], dtype=float) / 255
+    return np.array(to_rgb(color), dtype=float)
 
 
 # ---------------------------------------------------------------- the view
@@ -470,6 +589,7 @@ class _Surfaces:
         self.colors = np.zeros((len(surfaces), 3, 3))
         self.opacities = np.ones((len(surfaces), 3))
         self.owners = np.array([s.owner for s in surfaces] or [0], dtype=int)
+        self.pieces = np.array([s.piece for s in surfaces] or [0], dtype=int)
         for index, surface in enumerate(surfaces):
             styles = surface.part_styles or (surface.style,)
             for part in range(3):
@@ -621,20 +741,65 @@ def _hit_cylinder(origins, direction, start):
 
 
 class _Lighting:
-    """Lambert shading with shadows from a distant light."""
+    """
+    The brightness of surfaces: light from a distant source (Lambert's law, with shadows) plus
+    light from the surroundings (ambient, reduced by occlusion), shaded as the look says.
+    """
 
-    def __init__(self, surfaces: _Surfaces, light: np.ndarray, ambient: float, shadows: bool):
+    def __init__(self, surfaces: _Surfaces, light: np.ndarray, look: Look, size: float):
         self.surfaces = surfaces
         self.light = np.asarray(light, dtype=float)
-        self.ambient = float(np.clip(ambient, 0, 1))
-        self.shadows = shadows
+        self.look = look
+        self.ambient = look.ambient
+        self.shadows = look.shadows
+        self.radius = look.occlusion_radius * size
 
-    def brightness(self, points: np.ndarray, normals: np.ndarray) -> np.ndarray:
-        facing = np.clip(normals @ self.light, 0, 1)
+    def brightness(
+        self, points: np.ndarray, normals: np.ndarray, openness: np.ndarray | None = None
+    ) -> np.ndarray:
+        """
+        From 0 (black) to 1 (full color). ``openness`` is 1 where nothing blocks the
+        surroundings and lower in corners (see :meth:`openness`); None means 1 everywhere.
+        """
+        look = self.look
+        ambient = self.ambient if openness is None else self.ambient * (1 - look.occlusion * (1 - openness))
+        if look.shading == "flat":
+            return ambient / self.ambient if self.ambient > 0 else np.ones(len(points))
+        direct = np.clip(normals @ self.light, 0, 1)
         if self.shadows:
-            lit = facing > 0
-            facing[lit] *= self.light_reaching(points[lit] + normals[lit] * 1e3 * self.surfaces.epsilon)
-        return self.ambient + (1 - self.ambient) * facing
+            lit = direct > 0
+            direct[lit] *= self.light_reaching(points[lit] + normals[lit] * 1e3 * self.surfaces.epsilon)
+        if look.shading == "cel":
+            direct = np.minimum(np.floor(direct * look.bands), look.bands - 1) / (look.bands - 1)
+        return ambient + (1 - self.ambient) * direct
+
+    def openness(self, points: np.ndarray, normals: np.ndarray, turn: int = 0) -> np.ndarray:
+        """
+        How open each point is to its surroundings (ambient occlusion): 1 if no surface lies
+        within ``occlusion_radius`` above it, down to 0 if it is enclosed.
+
+        Rays are cast in a fixed set of directions spread over the sphere (the same for all
+        points, so they stay parallel and fast to cast); each counts with the cosine of its
+        angle to the normal. ``turn`` chooses one of several turned copies of the set, so that
+        neighbouring pixels sample different directions.
+        """
+        origins = points + normals * 1e3 * self.surfaces.epsilon
+        blocked = np.zeros(len(points))
+        total = np.zeros(len(points))
+        for direction in _sphere_directions(2 * self.look.occlusion_samples, turn):
+            weight = normals @ direction
+            above = np.nonzero(weight > 0)[0]
+            if above.size == 0:
+                continue
+            hits = self.surfaces.cast(origins[above], direction, np.zeros(above.size))
+            near = hits.distance < self.radius
+            opacity = np.zeros(above.size)
+            opacity[near] = self.surfaces.opacities[
+                hits.surface[near], self.surfaces.part_index(_subset(hits, near))
+            ]
+            blocked[above] += weight[above] * opacity
+            total[above] += weight[above]
+        return 1 - np.divide(blocked, total, out=np.zeros_like(blocked), where=total > 0)
 
     def light_reaching(self, points: np.ndarray) -> np.ndarray:
         """How much light reaches each point: 1 unblocked, less behind transparent faces, 0 in shadow."""
@@ -658,6 +823,29 @@ def _subset(hits: _Hits, mask: np.ndarray) -> _Hits:
     return _Hits(hits.distance[mask], hits.surface[mask], hits.part[mask])
 
 
+def _sphere_directions(count: int, turn: int = 0) -> np.ndarray:
+    """
+    ``count`` unit vectors spread evenly over the sphere (a Fibonacci lattice); different
+    ``turn`` numbers give the same lattice turned in a fixed, irregular way.
+    """
+    k = np.arange(count) + 0.5
+    z = 1 - 2 * k / count
+    angle = np.pi * (1 + 5**0.5) * k
+    radius = np.sqrt(1 - z * z)
+    directions = np.column_stack([radius * np.cos(angle), radius * np.sin(angle), z])
+    if turn:
+        axis = np.array([np.sin(1.3 * turn), np.cos(2.1 * turn), 0.7])
+        directions = directions @ Transform().rotate(axis, 47.0 * turn).matrix[:3, :3].T
+    return directions
+
+
+#: How many turned direction sets neighbouring pixels use for ambient occlusion (2 x 2 pattern).
+OCCLUSION_TURNS = 4
+
+#: How far ambient occlusion is smoothed, in pixels of a 500-pixel-wide image.
+OCCLUSION_BLUR = 3.0
+
+
 @dataclass
 class _Layers:
     """The traced surfaces of the supersampled image."""
@@ -666,6 +854,8 @@ class _Layers:
     coverage: np.ndarray  # (n,) 0 where only background shows, 1 where opaque
     depth: np.ndarray  # (n,) depth of the first opaque surface (inf if none)
     owner: np.ndarray  # (n,) scene item of that surface (-1 if none)
+    first_piece: np.ndarray  # (n,) geometry of the first surface hit, opaque or not (-1 if none)
+    first_normal: np.ndarray  # (n, 3) its normal, facing the viewer
 
 
 def _trace_layers(surfaces: _Surfaces, lighting: _Lighting, view: _View) -> _Layers:
@@ -676,9 +866,11 @@ def _trace_layers(surfaces: _Surfaces, lighting: _Lighting, view: _View) -> _Lay
     through = np.ones(count)
     depth = np.full(count, np.inf)
     owner = np.full(count, -1)
+    first_piece = np.full(count, -1)
+    first_normal = np.zeros((count, 3))
     start = np.zeros(count)
     active = np.arange(count)
-    for _ in range(MAX_LAYERS):
+    for layer in range(MAX_LAYERS):
         hits = surfaces.cast(origins[active], direction, start[active])
         found = np.isfinite(hits.distance)
         active, hits = active[found], _subset(hits, found)
@@ -687,10 +879,16 @@ def _trace_layers(surfaces: _Surfaces, lighting: _Lighting, view: _View) -> _Lay
         points = origins[active] + hits.distance[:, None] * direction
         normals = surfaces.normals(hits, points)
         normals[normals @ direction > 0] *= -1  # thin faces are seen from both sides
+        if layer == 0:
+            first_piece[active] = surfaces.pieces[hits.surface]
+            first_normal[active] = normals
         part = surfaces.part_index(hits)
         base = surfaces.colors[hits.surface, part]
         opacity = surfaces.opacities[hits.surface, part]
-        shade = lighting.brightness(points, normals)
+        openness = None
+        if lighting.look.occlusion:
+            openness = _openness(lighting, view, active, hits, points, normals, smooth=layer == 0)
+        shade = lighting.brightness(points, normals, openness)
         color[active] += (through[active] * opacity * shade)[:, None] * base
 
         first_opaque = (opacity >= 0.999) & np.isinf(depth[active])
@@ -700,7 +898,73 @@ def _trace_layers(surfaces: _Surfaces, lighting: _Lighting, view: _View) -> _Lay
         through[active] *= 1 - opacity
         start[active] = hits.distance + 10 * surfaces.epsilon
         active = active[through[active] > 0.004]
-    return _Layers(color, 1 - through, depth, owner)
+    return _Layers(color, 1 - through, depth, owner, first_piece, first_normal)
+
+
+def _openness(lighting: _Lighting, view: _View, rays: np.ndarray, hits: _Hits, points, normals, smooth: bool):
+    """
+    Ambient occlusion for the hit points of a layer of rays.
+
+    It changes slowly over a surface, so it is computed once per pixel (for its middle
+    subpixel), with direction sets that differ between neighbouring pixels, and then smoothed
+    over each surface (``smooth``, for the first layer). Subpixels that hit the same surface
+    as their pixel's middle share its value; the others get their own.
+    """
+    samples, columns = view.samples, view.shape[1]
+    row, column = np.divmod(rays, columns)
+    pixel_row, pixel_column = row // samples, column // samples
+    middle = (pixel_row * samples + samples // 2) * columns + pixel_column * samples + samples // 2
+    where = np.minimum(np.searchsorted(rays, middle), len(rays) - 1)  # rays are sorted
+    is_middle = middle == rays
+    shared = (rays[where] == middle) & (hits.surface[where] == hits.surface) & ~is_middle
+
+    openness = np.ones(len(rays))
+    turn = (pixel_row % 2) * 2 + pixel_column % 2
+    for k in range(OCCLUSION_TURNS):
+        mine = is_middle & (turn == k)
+        if mine.any():
+            openness[mine] = lighting.openness(points[mine], normals[mine], k)
+    if smooth and is_middle.any():
+        openness[is_middle] = _smooth_over_surfaces(
+            openness[is_middle],
+            pixel_row[is_middle],
+            pixel_column[is_middle],
+            lighting.surfaces.pieces[hits.surface[is_middle]],
+            normals[is_middle],
+            (view.height, view.width),
+            OCCLUSION_BLUR * view.zoom,
+        )
+    alone = ~is_middle & ~shared
+    if alone.any():
+        openness[alone] = lighting.openness(points[alone], normals[alone])
+    openness[shared] = openness[where[shared]]
+    return openness
+
+
+def _smooth_over_surfaces(values, rows, columns, pieces, normals, shape, radius: float) -> np.ndarray:
+    """
+    Average each pixel's value with its neighbours within ``radius`` pixels that show the same
+    geometry facing the same way, so the smoothing stops at outlines and sharp edges.
+    """
+    reach = max(int(round(radius)), 1)
+    grid = np.full(shape, np.nan)
+    piece = np.full(shape, -1)
+    normal = np.zeros((*shape, 3))
+    grid[rows, columns], piece[rows, columns], normal[rows, columns] = values, pieces, normals
+    total = np.zeros(len(values))
+    weight = np.zeros(len(values))
+    height, width = shape
+    for dy in range(-reach, reach + 1):
+        for dx in range(-reach, reach + 1):
+            if dx * dx + dy * dy > reach * reach:
+                continue
+            r, c = rows + dy, columns + dx
+            inside = (r >= 0) & (r < height) & (c >= 0) & (c < width)
+            r, c = np.clip(r, 0, height - 1), np.clip(c, 0, width - 1)
+            alike = inside & (piece[r, c] == pieces) & (np.einsum("ij,ij->i", normal[r, c], normals) > 0.95)
+            total[alike] += grid[r, c][alike]
+            weight[alike] += 1
+    return total / np.maximum(weight, 1)
 
 
 # ---------------------------------------------------------------- lines, points and labels
@@ -716,6 +980,31 @@ class _Canvas:
         self.coverage = layers.coverage.reshape(rows, columns)
         self.depth = layers.depth.reshape(rows, columns)
         self.owner = layers.owner.reshape(rows, columns)
+
+    def outline(self, layers: _Layers, look: Look) -> None:
+        """
+        Draw outlines where one geometry meets another or the background, and where the
+        surface bends by more than the crease angle.
+        """
+        rows, columns = self.view.shape
+        piece = layers.first_piece.reshape(rows, columns)
+        normal = layers.first_normal.reshape(rows, columns, 3)
+        limit = np.cos(np.radians(look.crease_angle))
+        edges = np.zeros((rows, columns), dtype=bool)
+        for axis in (0, 1):
+            here = [slice(None), slice(None)]
+            there = [slice(None), slice(None)]
+            here[axis], there[axis] = slice(None, -1), slice(1, None)
+            a, b = piece[tuple(here)], piece[tuple(there)]
+            bend = np.einsum("ijk,ijk->ij", normal[tuple(here)], normal[tuple(there)])
+            edge = (a != b) | ((a >= 0) & (bend < limit))
+            edges[tuple(here)] |= edge
+            edges[tuple(there)] |= edge
+        radius = max(look.outline_width * self.view.zoom * self.view.samples / 2 - 1, 0)
+        edges = _dilate(edges, radius + 0.5)  # the edges already cover the pixels on both sides
+        rgb = _rgb(look.outline_color)
+        self.color[edges] = rgb
+        self.coverage[edges] = 1
 
     def bias(self, width: float) -> float:
         """How far in front of a surface a line may be and still count as on it."""
@@ -852,6 +1141,22 @@ class _Canvas:
             return False
         in_front = self.depth[row, column] + self.bias(2.0) < depths[0]
         return bool(in_front and self.owner[row, column] not in owners)
+
+
+def _dilate(mask: np.ndarray, radius: float) -> np.ndarray:
+    """Widen the marked pixels by ``radius`` pixels in every direction."""
+    reach = int(np.floor(radius))
+    if reach < 1:
+        return mask
+    grown = mask.copy()
+    rows, columns = mask.shape
+    for dy in range(-reach, reach + 1):
+        for dx in range(-reach, reach + 1):
+            if (dy or dx) and dx * dx + dy * dy <= radius * radius:
+                grown[max(dy, 0) : rows + min(dy, 0), max(dx, 0) : columns + min(dx, 0)] |= mask[
+                    max(-dy, 0) : rows + min(-dy, 0), max(-dx, 0) : columns + min(-dx, 0)
+                ]
+    return grown
 
 
 def _arrow_tip(pixels: np.ndarray, width: float) -> tuple[np.ndarray | None, np.ndarray]:

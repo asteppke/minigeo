@@ -44,9 +44,10 @@ Features
   diffractometer, moved by sliding and turning joints: ``x.value = 0.3``.
 - **Scenes and styles**: geometry is independent of drawing; a ``Scene`` adds colors, opacity,
   dashes, arrows and labels.
-- **Backends**: SVG (vector drawings), matplotlib (3D axes), plotly (interactive, WebGL) and a
-  ray tracer (light, shadows, exact spheres and cylinders), all with the same camera; scenes
-  show themselves in Jupyter.
+- **Backends**: SVG (vector drawings), TikZ (for LaTeX), matplotlib (3D axes), plotly
+  (interactive, WebGL) and a ray tracer (light, shadows, exact spheres and cylinders, and
+  looks for diagrams: cel shading, outlines, ambient occlusion), all with the same camera;
+  scenes show themselves in Jupyter.
 
 A first scene
 -------------
@@ -75,6 +76,7 @@ A first scene
    scene.render("matplotlib")                 # 3D axes
    scene.render("plotly").show()              # interactive in the browser
    scene.save("table.png", backend="raytrace")  # with light and shadows
+   scene.save("table.tex", width=8)           # TikZ for LaTeX, 8 cm wide
 
 All backends take the same view options: ``elev``, ``azim`` and ``vertical_axis``
 (e.g. ``vertical_axis="x"`` when x points up).
@@ -193,6 +195,26 @@ something lies in front of them.
    scene.render("raytrace", shadows=False, background="white")
 
 It is written in numpy and takes about a second for a 500-pixel image.
+
+For diagrams, *looks* replace the photo-like light: ``look="cel"`` (flat bands of color and
+outlines), ``look="soft"`` (ambient occlusion instead of shadows), ``look="diagram"`` (both)
+and ``look="print"`` (gray tones). Single settings change on top of a look:
+
+.. code-block:: python
+
+   scene.render("raytrace", look="diagram", bands=2, outline_width=2)
+   scene.render("raytrace", look="cel", palette=["whitesmoke", "slategray", "goldenrod"])
+
+TikZ
+----
+``scene.render("tikz")`` writes the scene as a ``tikzpicture`` with plain 2D coordinates,
+drawn like the SVG picture. Labels are LaTeX (``"$2\theta$"``).
+
+.. code-block:: python
+
+   picture = scene.render("tikz", width=8)    # centimetres
+   picture.save("figure.tex")                 # \input{figure.tex}; needs \usetikzlibrary{arrows.meta}
+   picture.save("figure.pdf")                 # compiled with pdflatex
 
 Installation
 ------------

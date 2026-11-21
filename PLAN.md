@@ -39,6 +39,7 @@ rule or change the rule here first, on purpose.
 
 ```
 geometry/   points, lines, vectors, shapes (pose + local vertices), planes, annotations
+colors.py   CSS colors and hex codes as RGB, without dependencies
 frames.py   kinematic tree: fixed, prismatic and revolute frames that carry geometry
 groups.py   geometries moved together
 transform.py  4x4 affine transforms, split_rotation
@@ -46,31 +47,30 @@ anchors.py  TikZ-style named points
 scene.py    items + styles + labels + frames -> primitives; render/save/animate
 render.py   the four primitives, geometry -> primitives
 camera.py, depth.py   shared camera; painter's order for 2D backends
-backends/   svg, matplotlib, plotly, raytrace
+flat.py     the shared 2D steps: hide, project, sort, shade (SVG, TikZ)
+backends/   svg, tikz, matplotlib, plotly, raytrace
 ```
 
 ## Roadmap
 
 Done: 1. foundations test suite (from galgebra's identities); 2. this plan; 6. the concept
-manual (`docs/manual`, first version).
+manual (`docs/manual`, first version); 3. TikZ backend; 5. looks for the ray tracer.
 
 Suggested order for the next steps, with what each one needs first:
 
 | step | what | needs first | notes |
 |---|---|---|---|
 | 6 | concept manual, code next to output (like the PGF manual) | done | `minigeo-example` blocks in `docs/manual/*.rst` run at build time (`docs/_ext/minigeo_manual.py`) and in `tests/test_manual.py`. Next: a chapter per new feature, and golden-image checks if pictures should be guarded too. |
-| 3 | TikZ backend | shared 2D pipeline | Move projection, back-face removal and painter's order out of `backends/svg.py` into a `projection` module; SVG and TikZ become thin writers. Output `tikzpicture` with projected 2D coordinates (exact and robust) rather than `tikz-3dplot`. |
-| 5 | stylised rendering: cel shading, few colors, ambient occlusion, outlines | raytracer buffers | Add options to the ray tracer: quantised Lambert shading, a palette, hemisphere-sampled occlusion, and outlines from jumps in depth, normal and object id. Aim for diagrams that print well in grey. |
+| 3 | TikZ backend | done | `flat.py` holds the shared 2D steps; `backends/tikz.py` writes plain 2D paths, xcolor mixes for shading, `arrows.meta` tips, LaTeX labels. Next: cel-style shading for SVG/TikZ too. |
+| 5 | stylised rendering: cel shading, few colors, ambient occlusion, outlines | done | `Look` and `LOOKS` in the ray tracer. Occlusion uses fixed direction sets (parallel rays), interleaved per pixel and smoothed per surface. |
 | 7 | pick points and anchors, measure distances | nothing | Start with plotly (`FigureWidget` click events) in Jupyter; snap clicks to vertices and anchors; show a `Dimension` live. Keep the measuring logic backend-free, so matplotlib pick events can reuse it. |
 | 4 | Mitsuba 3 backend | exact-shape hook, perspective camera | Export the scene as a Mitsuba dict (spheres, cylinders and meshes; materials from styles). Heavy optional dependency; best kept as a separate extra and documented as experimental. |
 
-Shared groundwork, in this order: the 2D pipeline module (for 3 and 6), the exact-shape hook
-(generalise `raytrace._exact_surface`, for 4 and 5), a perspective option for `Camera` (for 4
-and ray tracing phase 2).
+Shared groundwork still open: the exact-shape hook (generalise `raytrace._exact_surface`, for
+4), a perspective option for `Camera` (for 4 and ray tracing phase 2).
 
 ## Backlog
 
-- SVG: a sphere with `vertical_axis="x"` is painted in the wrong order (inner faces show).
 - Painter's backends (SVG, matplotlib) cannot draw intersecting solids or lines piercing
   solids; the ray tracer and plotly can. Document, don't fight.
 - Ray tracer phase 2: perspective camera; lines and labels tinted behind translucent faces.

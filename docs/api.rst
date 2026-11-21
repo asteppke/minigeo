@@ -109,7 +109,10 @@ Usually used through :meth:`Scene.render`, :meth:`Scene.save` and :meth:`Scene.a
    :members: render, animate
 
 .. automodule:: minigeo.backends.raytrace
-   :members: render, RaytracedImage
+   :members: render, RaytracedImage, Look, LOOKS
+
+.. automodule:: minigeo.backends.tikz
+   :members: render, TikzPicture, latex_text
 
 For backend authors
 ===================
@@ -119,6 +122,11 @@ backends that paint from back to front.
 
 .. automodule:: minigeo.render
    :members: Face, Path, Marker, Label
+
+.. automodule:: minigeo.flat
+   :members: flatten, FlatPicture, Placed
+
+.. autofunction:: minigeo.colors.to_rgb
 
 .. automodule:: minigeo.depth
    :members: painter_order, is_back_face

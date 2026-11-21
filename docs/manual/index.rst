@@ -31,3 +31,4 @@ complete list of classes and arguments, see the :doc:`API reference <../api>`.
    measuring
    frames
    backends
+   looks

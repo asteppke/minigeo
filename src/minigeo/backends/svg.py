@@ -1,10 +1,9 @@
 """
 Draw a scene as an SVG image (a vector drawing, like a TikZ picture).
 
-The scene is projected with an orthographic :class:`~minigeo.camera.Camera`, the back faces
-of opaque solids are left out, and everything else is painted from back to front in the
-order of :func:`minigeo.depth.painter_order`. SVG has no lighting, so faces are shaded by
-laying a translucent black copy over them, darker the more they turn away from the light.
+The scene is projected, sorted and shaded by :func:`minigeo.flat.flatten` (shared with the
+TikZ backend). SVG has no lighting, so faces are shaded by laying a translucent black copy
+over them, darker the more they turn away from the light.
 
 Requires ``pip install "minigeo[svg]"`` (the `svg.py <https://pypi.org/project/svg.py/>`_ package).
 """
@@ -19,15 +18,11 @@ import numpy as np
 import svg
 
 from ..camera import Camera
-from ..depth import is_back_face, painter_order
-from ..geometry import face_normal
-from ..render import Face, Label, Marker, Path, Primitive
+from ..flat import Placed, flatten
+from ..render import Face, Label, Marker, Path
 from ..style import Style, color_value
 
 DASH_PATTERNS = {"solid": None, "dashed": (6.0, 4.0), "dotted": (1.5, 3.0)}
-
-#: How much faces turning away from the light are darkened (0: no shading, 1: up to black).
-SHADING_STRENGTH = 0.45
 
 
 @dataclass
@@ -68,101 +63,48 @@ def render(
         shading: Darken faces that turn away from the light, for a 3D impression.
     """
     camera = Camera(elev, azim, vertical_axis)
-    primitives = [p for p in scene.primitives() if not _hidden(p, camera)]
-    canvas = _Canvas.fitting(primitives, camera, width, margin)
-    painter = _Painter(canvas, camera, shading)
-
-    for index in painter_order(primitives, camera.toward_viewer):
-        painter.paint(primitives[index])
+    picture = flatten(scene.primitives(), camera, width=width, margin=margin, y_down=True, shading=shading)
+    painter = _Painter()
+    for item in picture.items:
+        painter.paint(item)
 
     elements = (
         [svg.Defs(elements=list(painter.arrow_markers.values()))] if painter.arrow_markers else []
     ) + painter.elements
     return SvgDrawing(
         svg.SVG(
-            width=round(canvas.width),
-            height=round(canvas.height),
-            viewBox=svg.ViewBoxSpec(0, 0, round(canvas.width), round(canvas.height)),
+            width=round(picture.width),
+            height=round(picture.height),
+            viewBox=svg.ViewBoxSpec(0, 0, round(picture.width), round(picture.height)),
             elements=elements,
         )
     )
 
 
-def _hidden(primitive: Primitive, camera: Camera) -> bool:
-    """Back faces of closed, opaque solids can never be seen."""
-    return (
-        isinstance(primitive, Face)
-        and primitive.closed
-        and primitive.style.opacity == 1
-        and is_back_face(primitive, camera.toward_viewer)
-    )
-
-
-@dataclass
-class _Canvas:
-    """Turns world coordinates into pixel coordinates (y pointing down, as SVG wants)."""
-
-    camera: Camera
-    scale: float
-    low: np.ndarray  # lowest screen corner in world units
-    high: np.ndarray
-    margin: float
-
-    @classmethod
-    def fitting(cls, primitives: list[Primitive], camera: Camera, width: float, margin: float) -> _Canvas:
-        points = [p.points for p in primitives if isinstance(p, Face | Path)]
-        points += [p.position[np.newaxis] for p in primitives if isinstance(p, Marker | Label)]
-        if points:
-            xy, _ = camera.project(np.vstack(points))
-            low, high = xy.min(axis=0), xy.max(axis=0)
-        else:
-            low, high = np.zeros(2), np.ones(2)
-        size = np.maximum(high - low, 1e-9)
-        scale = (width - 2 * margin) / max(size[0], 0.1 * size[1])  # very narrow scenes are not stretched
-        return cls(camera, scale, low, high, margin)
-
-    @property
-    def width(self) -> float:
-        return (self.high[0] - self.low[0]) * self.scale + 2 * self.margin
-
-    @property
-    def height(self) -> float:
-        return (self.high[1] - self.low[1]) * self.scale + 2 * self.margin
-
-    def pixels(self, points: np.ndarray) -> np.ndarray:
-        xy, _ = self.camera.project(points)
-        x = (xy[:, 0] - self.low[0]) * self.scale + self.margin
-        y = (self.high[1] - xy[:, 1]) * self.scale + self.margin
-        return np.round(np.column_stack([x, y]), 2)
-
-
 class _Painter:
     """Collects the SVG elements for the primitives, in the order they are painted."""
 
-    def __init__(self, canvas: _Canvas, camera: Camera, shading: bool):
-        self.canvas = canvas
-        self.shading = shading
-        self.light = camera.light
+    def __init__(self):
         self.elements: list[svg.Element] = []
         self.arrow_markers: dict[str, svg.Marker] = {}
 
-    def paint(self, primitive: Primitive) -> None:
+    def paint(self, item: Placed) -> None:
+        primitive, points = item.primitive, np.round(item.points, 2)
         if isinstance(primitive, Face):
-            self.face(primitive)
+            self.face(primitive, points, item.darkness)
         elif isinstance(primitive, Path):
-            self.path(primitive)
+            self.path(primitive, points)
         elif isinstance(primitive, Marker):
-            self.marker(primitive)
+            self.marker(primitive, points[0])
         elif isinstance(primitive, Label):
-            self.label(primitive)
+            self.label(primitive, points[0])
         else:
             raise TypeError(f"Cannot draw {type(primitive).__name__}.")
 
     # ------------------------------------------------------------ primitives
 
-    def face(self, face: Face) -> None:
+    def face(self, face: Face, corners: np.ndarray, darkness: float) -> None:
         style = face.style
-        corners = self.canvas.pixels(face.points)
         flat = corners.flatten().tolist()
         filled = style.fill != "none"
         outline = _stroke(style) if face.fully_outlined else _seam_cover(style.fill, style.opacity)
@@ -175,7 +117,6 @@ class _Painter:
                 **outline,
             )
         )
-        darkness = self._darkness(face) if filled and self.shading else 0
         if darkness > 0.01:
             shade = round(darkness * style.opacity, 3)
             self.elements.append(
@@ -196,12 +137,12 @@ class _Painter:
                 commands += [svg.M(*corners[i]), svg.L(*corners[j])]
             self.elements.append(svg.Path(d=commands, fill="none", stroke_linecap="round", **_stroke(style)))
 
-    def path(self, path: Path) -> None:
+    def path(self, path: Path, points: np.ndarray) -> None:
         style = path.style
         marker = f"url(#{self._arrow_marker(style.stroke)})" if style.arrow else None
         self.elements.append(
             svg.Polyline(
-                points=self.canvas.pixels(path.points).flatten().tolist(),
+                points=points.flatten().tolist(),
                 fill="none",
                 stroke_linecap="round",
                 stroke_linejoin="round",
@@ -210,9 +151,9 @@ class _Painter:
             )
         )
 
-    def marker(self, marker: Marker) -> None:
+    def marker(self, marker: Marker, position: np.ndarray) -> None:
         style = marker.style
-        ((x, y),) = self.canvas.pixels(marker.position[np.newaxis])
+        x, y = position
         self.elements.append(
             svg.Circle(
                 cx=x,
@@ -223,9 +164,9 @@ class _Painter:
             )
         )
 
-    def label(self, label: Label) -> None:
+    def label(self, label: Label, position: np.ndarray) -> None:
         style = label.style
-        ((x, y),) = self.canvas.pixels(label.position[np.newaxis])
+        x, y = position
         centered = label.align == "center"
         self.elements.append(
             svg.Text(
@@ -242,11 +183,6 @@ class _Painter:
         )
 
     # ------------------------------------------------------------ helpers
-
-    def _darkness(self, face: Face) -> float:
-        """0 for a face looking straight at the light, up to SHADING_STRENGTH for one turned away."""
-        brightness = abs(float(np.dot(face_normal(face.points), self.light)))  # flat faces have two sides
-        return SHADING_STRENGTH * (1 - brightness)
 
     def _arrow_marker(self, color: str) -> str:
         """An arrow tip in the given color, defined once per color."""

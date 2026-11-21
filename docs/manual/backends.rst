@@ -23,6 +23,34 @@ one of them is drawn in front as a whole.
    scene.add(Box([0, 0, 0], size=(1, 1, 1)), fill="C0")
    scene.add(Plane([0, 0, 0], [1, 0, 0.4], size=1.8), fill="gold")
 
+TikZ
+====
+
+``scene.render("tikz")`` writes the picture as TikZ code for LaTeX documents. It is drawn
+like the SVG picture (same projection, order and shading), but as plain 2D TikZ paths that
+compile quickly and can be edited by hand. ``width`` is in centimetres. Labels are LaTeX,
+so ``$2\theta$`` is math; symbols such as ′, ° and Greek letters also work with pdflatex.
+
+.. minigeo-example::
+
+   scene = Scene()
+   scene.add(Box([0, 0, 0], size=(1, 1, 0.5)), fill="C0",
+             label="box", label_at="top")
+   picture = scene.render("tikz", width=4)
+   lines = picture.code.splitlines()
+   print(len(lines), "lines of TikZ, starting with")
+   print("\n".join(lines[1:3]))
+
+The picture is the SVG preview of the same scene. The code needs ``\usepackage{tikz}`` and
+``\usetikzlibrary{arrows.meta}``.
+
+.. code-block:: python
+
+   picture.save("figure.tex")                    # then \input{figure.tex}
+   picture.save("figure.tex", standalone=True)   # a complete document
+   picture.save("figure.pdf")                    # compiled with pdflatex
+   scene.save("figure.tex", width=6)             # the same in one step
+
 Ray tracing
 ===========
 
@@ -53,6 +81,9 @@ hidden where something lies in front of them. The result is an image;
 
 The sphere on the right has only six segments, which the other backends draw as a coarse
 polyhedron; the ray tracer still makes it round.
+
+The ray tracer can also draw in other *looks*, for diagrams rather than photos; see
+:doc:`looks`.
 
 matplotlib
 ==========
@@ -98,10 +129,11 @@ Saving
 ======
 
 ``scene.save`` chooses the backend from the file extension: ``.svg`` (SVG), ``.html``
-(plotly), ``.png`` and ``.pdf`` (matplotlib). ``backend="raytrace"`` saves a ray traced
-image instead. Options such as ``elev`` or ``width`` are passed on to the backend.
+(plotly), ``.tex`` (TikZ), ``.png`` and ``.pdf`` (matplotlib). ``backend="raytrace"`` saves
+a ray traced image instead, and ``backend="tikz"`` a PDF compiled from TikZ. Options such as ``elev`` or ``width`` are passed on to the backend.
 
 .. code-block:: python
 
    scene.save("scene.svg", elev=20)
+   scene.save("scene.tex", width=8)
    scene.save("scene.png", backend="raytrace", width=1000)

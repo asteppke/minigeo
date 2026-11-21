@@ -36,6 +36,7 @@ BACKENDS = {
     "svg": "minigeo.backends.svg",
     "plotly": "minigeo.backends.plotly",
     "raytrace": "minigeo.backends.raytrace",
+    "tikz": "minigeo.backends.tikz",
 }
 
 
@@ -259,8 +260,9 @@ class Scene:
         Args:
             backend: ``"matplotlib"`` (returns the 3D axes), ``"svg"`` (returns an
                 :class:`~minigeo.backends.svg.SvgDrawing`), ``"plotly"`` (returns a
-                plotly figure for interactive viewing) or ``"raytrace"`` (returns a
-                :class:`~minigeo.backends.raytrace.RaytracedImage` with light and shadows).
+                plotly figure for interactive viewing), ``"raytrace"`` (returns a
+                :class:`~minigeo.backends.raytrace.RaytracedImage` with light and shadows) or
+                ``"tikz"`` (returns a :class:`~minigeo.backends.tikz.TikzPicture` for LaTeX).
             **options: Passed on to the backend, e.g. ``elev=20``, ``show_axes=False``.
         """
         return self._backend(backend).render(self, **options)
@@ -271,25 +273,30 @@ class Scene:
 
         * ``.svg``: the SVG backend
         * ``.html``: the plotly backend (an interactive page)
+        * ``.tex``: the TikZ backend (a ``tikzpicture`` for ``\\input``)
         * ``.png``, ``.pdf``: the matplotlib backend
 
         Args:
             path: The file to write.
-            backend: ``"raytrace"`` to save a ray traced image instead (``.png``, ``.jpg``, ...).
+            backend: ``"raytrace"`` to save a ray traced image instead (``.png``, ``.jpg``, ...),
+                or ``"tikz"`` for TikZ code (``.tex``) or a PDF compiled from it (``.pdf``).
             **options: Passed on to the backend, e.g. ``elev=20`` or ``width=600``.
 
         Example:
             >>> scene.save("table.svg", show_axes=False)
             >>> scene.save("table.png", backend="raytrace", width=1000)
+            >>> scene.save("table.tex", width=6)   # TikZ, 6 cm wide
         """
         path = FilePath(path)
         suffix = path.suffix.lower()
-        if backend == "raytrace":
-            self.render("raytrace", **options).save(path)
+        if backend in {"raytrace", "tikz"}:
+            self.render(backend, **options).save(path)
         elif backend is not None:
             raise ValueError(
-                "save() chooses the backend from the file extension; backend can only be 'raytrace'."
+                "save() chooses the backend from the file extension; backend can be 'raytrace' or 'tikz'."
             )
+        elif suffix == ".tex":
+            self.render("tikz", **options).save(path)
         elif suffix == ".svg":
             self.render("svg", **options).save(path)
         elif suffix == ".html":
@@ -299,7 +306,7 @@ class Scene:
 
             to_figure(self, **options).savefig(path)
         else:
-            raise ValueError(f"Cannot save {path.name}: use .svg, .html, .png or .pdf.")
+            raise ValueError(f"Cannot save {path.name}: use .svg, .html, .tex, .png or .pdf.")
 
     def snapshots(self, update: Callable[[int], None], frames: int) -> list[list[Primitive]]:
         """
