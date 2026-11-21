@@ -2,8 +2,8 @@
 Picking anchors and measuring between them, independent of any backend.
 
 :func:`pickable_points` lists the points of a scene that can be picked: the named anchors
-that lie on each shape (``"top"``, ``"top front left"``, ...), the ends and middle of lines,
-and points. A :class:`Measurement` remembers up to two picks and reports their coordinates,
+that lie on each shape (``"top"``, ``"top front left"``, ...), the ends and middle of lines
+and curves, the corners of polylines, and points. A :class:`Measurement` remembers up to two picks and reports their coordinates,
 distance and difference. Interactive backends (``scene.measure()``) use both: they snap the
 mouse to the nearest pickable point and show the measurement.
 
@@ -23,7 +23,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .anchors import point_in_bounding_box
-from .geometry import Angle, Axis, Dimension, Geometry, Line, Point, Shape, face_normal
+from .geometry import Angle, Axis, Curve, Dimension, Geometry, Line, Mesh, Point, Polyline, Shape, face_normal
 from .groups import Group
 
 #: The words of the anchors, along x', y' and z', for -1, 0 and +1.
@@ -159,8 +159,13 @@ def _spots_of(geometry: Geometry, name: str) -> list[Spot]:
         return []
     if isinstance(geometry, Point):
         return [Spot(np.asarray(geometry.position, dtype=float), name)]
-    if isinstance(geometry, Line | Axis):
+    if isinstance(geometry, Line | Axis | Curve):
         return [Spot(geometry.anchor(where), f"{name}: {where}") for where in ("start", "midway", "end")]
+    if isinstance(geometry, Polyline):  # its corners, and halfway along it
+        corners = [Spot(point.copy(), f"{name}: point {k + 1}") for k, point in enumerate(geometry.vertices)]
+        return [*corners, Spot(geometry.anchor("midway"), f"{name}: midway")]
+    if isinstance(geometry, Mesh):  # any shape: offer its bounding box
+        return _box_spots(geometry, name, lambda point: True)
     if isinstance(geometry, Shape):
         return _shape_spots(geometry, name)
     return [Spot(np.asarray(geometry.center, dtype=float), f"{name}: center")]
@@ -171,6 +176,13 @@ def _shape_spots(shape: Shape, name: str) -> list[Spot]:
     local = shape.local_vertices
     size = float(np.ptp(local, axis=0).max()) or 1.0
     on_shape = _solid_test(shape, local, size) if shape.is_closed else _flat_test(shape, local, size)
+    return _box_spots(shape, name, on_shape)
+
+
+def _box_spots(shape: Shape, name: str, on_shape) -> list[Spot]:
+    """The anchors of the bounding box for which ``on_shape`` holds, each place once."""
+    local = shape.local_vertices
+    size = float(np.ptp(local, axis=0).max()) or 1.0
     spots, seen = [], set()
     directions = [(x, y, z) for x in (-1, 0, 1) for y in (-1, 0, 1) for z in (-1, 0, 1)]
     for direction in sorted(directions, key=lambda d: sum(map(abs, d))):  # center, faces, edges, corners

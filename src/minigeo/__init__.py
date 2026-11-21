@@ -17,18 +17,22 @@ from .geometry import (
     Box,
     Circle,
     Cone,
+    Curve,
     Cylinder,
     Dimension,
     Line,
+    Mesh,
     Plane,
     Point,
     Polygon,
+    Polyline,
     Rectangle,
     Sphere,
     Transform,
     Vector,
 )
 from .groups import Group
+from .meshfiles import read_mesh, read_meshes, write_mesh
 from .scene import Scene
 from .style import Style
 
@@ -43,14 +47,17 @@ __all__ = [
     "Box",
     "Circle",
     "Cone",
+    "Curve",
     "Cylinder",
     "Dimension",
     "Frame",
     "Group",
     "Line",
+    "Mesh",
     "Plane",
     "Point",
     "Polygon",
+    "Polyline",
     "Rectangle",
     "Scene",
     "Sphere",
@@ -58,4 +65,7 @@ __all__ = [
     "Transform",
     "Vector",
     "__version__",
+    "read_mesh",
+    "read_meshes",
+    "write_mesh",
 ]

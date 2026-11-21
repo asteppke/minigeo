@@ -32,6 +32,8 @@ Features
 --------
 - **Geometry**: ``Point``, ``Line``, ``Axis``, ``Polygon``, ``Rectangle``, ``Circle``, ``Box``,
   ``Cylinder``, ``Cone`` and ``Sphere``, with named sizes: ``Cylinder(position, radius=0.5, height=2)``.
+- **Curves and meshes**: ``Polyline`` and ``Curve`` (any function of ``t``, e.g. a helix), and
+  ``Mesh`` for any faces; read and write OBJ and STL files with numpy only.
 - **Measuring**: ``Vector`` (with dot and cross products), ``Plane`` (distances, projections,
   intersections), ``Angle`` arcs and ``Dimension`` lines, as in technical drawings.
 - **Transforms**: translation, rotation (about any axis and any point), scaling and shear as

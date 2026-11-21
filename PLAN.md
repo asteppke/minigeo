@@ -38,7 +38,9 @@ rule or change the rule here first, on purpose.
 ## Architecture
 
 ```
-geometry/   points, lines, vectors, shapes (pose + local vertices), planes, annotations
+geometry/   points, lines, vectors, curves, shapes (pose + local vertices), meshes, planes,
+            annotations
+meshfiles.py  OBJ (+ .mtl colors) and STL read/write, numpy only
 colors.py   CSS colors and hex codes as RGB, without dependencies
 frames.py   kinematic tree: fixed, prismatic and revolute frames that carry geometry
 groups.py   geometries moved together
@@ -57,7 +59,8 @@ backends/   svg, tikz, matplotlib, plotly, raytrace (+ _fastcast: optional numba
 
 Done: 1. foundations test suite (from galgebra's identities); 2. this plan; 6. the concept
 manual (`docs/manual`, first version); 3. TikZ backend; 5. looks for the ray tracer;
-7. picking and measuring (matplotlib).
+7. picking and measuring (matplotlib); curves (`Polyline`, `Curve`) and `Mesh` with OBJ/STL
+files.
 
 Suggested order for the next steps, with what each one needs first:
 
@@ -85,7 +88,10 @@ per point (no rings or blotches).
 - Sizes like `radius` and `size` describe a shape as created, not after scaling.
 - Anchor words always mean the local axes (`"top"` is +z′), also with `vertical_axis="x"`.
 - Run the example notebooks in CI.
-- First release on PyPI; add `py.typed`.
+- Add `py.typed`.
+- Meshes: no STEP (needs a CAD kernel; users export STL). OBJ colors are written, not read;
+  faces are triangulated as fans (fine for convex faces). Curves are sampled once; a
+  `samples` change means a new `Curve`.
 
 ## Open questions
 

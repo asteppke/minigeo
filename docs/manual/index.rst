@@ -7,6 +7,10 @@ TikZ & PGF manual, every picture stands next to the code that draws it. The pict
 drawn from that very code whenever the documentation is built, so they always show what the
 current version of minigeo does.
 
+To follow along, install minigeo from PyPI with all backends and the fast ray tracer:
+``pip install "minigeo[all]"``. A plain ``pip install minigeo`` installs only the library and
+numpy (see the :doc:`overview <../readme>` for single backends).
+
 Every example starts as if with::
 
    import numpy as np
@@ -28,6 +32,8 @@ complete list of classes and arguments, see the :doc:`API reference <../api>`.
    own-axes
    anchors
    styles
+   curves
+   meshes
    measuring
    frames
    backends

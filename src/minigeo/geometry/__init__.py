@@ -20,6 +20,8 @@ from ..anchors import (
 from ..transform import Transform, rotate_arbitrary_vector_matrix, split_rotation
 from .annotations import Angle, Dimension
 from .base import Geometry
+from .curves import Curve, Polyline
+from .mesh import Mesh
 from .plane import Plane
 from .primitives import Axis, Line, Point, Vector
 from .shape import Shape, face_normal, ring
@@ -33,13 +35,16 @@ __all__ = [
     "Box",
     "Circle",
     "Cone",
+    "Curve",
     "Cylinder",
     "Dimension",
     "Geometry",
     "Line",
+    "Mesh",
     "Plane",
     "Point",
     "Polygon",
+    "Polyline",
     "Rectangle",
     "Shape",
     "Sphere",

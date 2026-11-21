@@ -37,6 +37,20 @@ axes x', y', z', anchors, transforms, faces and edges.
              face_indices, edge_indices, faces, edges, default_anchor, is_closed
    :no-show-inheritance:
 
+Curves and meshes
+=================
+
+.. autoclass:: Polyline
+   :members: vertices, path, length, anchor
+.. autoclass:: Curve
+   :members: at, tangent_at
+.. autoclass:: Mesh
+   :members: read, triangles, volume, edge_indices
+
+.. autofunction:: read_mesh
+.. autofunction:: read_meshes
+.. autofunction:: write_mesh
+
 Points, lines and vectors
 =========================
 

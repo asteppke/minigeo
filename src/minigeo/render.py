@@ -13,7 +13,7 @@ from functools import singledispatch
 
 import numpy as np
 
-from .geometry import Angle, Axis, Dimension, Geometry, Line, Plane, Point, Shape, Vector
+from .geometry import Angle, Axis, Dimension, Geometry, Line, Plane, Point, Polyline, Shape, Vector
 from .groups import Group
 from .style import Style
 
@@ -106,6 +106,11 @@ def _(shape: Shape, style: Style) -> list[Primitive]:
 @to_primitives.register
 def _(line: Line, style: Style) -> list[Primitive]:
     return [Path(line.vertices.copy(), style)]
+
+
+@to_primitives.register
+def _(polyline: Polyline, style: Style) -> list[Primitive]:
+    return [Path(polyline.path.copy(), style)]
 
 
 @to_primitives.register

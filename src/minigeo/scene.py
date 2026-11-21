@@ -275,6 +275,8 @@ class Scene:
         * ``.html``: the plotly backend (an interactive page)
         * ``.tex``: the TikZ backend (a ``tikzpicture`` for ``\\input``)
         * ``.png``, ``.pdf``: the matplotlib backend
+        * ``.obj``, ``.stl``: the shapes as a mesh file for other 3D programs (see
+          :func:`~minigeo.write_mesh`); colors go into an ``.mtl`` file next to an OBJ file
 
         Args:
             path: The file to write.
@@ -286,6 +288,7 @@ class Scene:
             >>> scene.save("table.svg", show_axes=False)
             >>> scene.save("table.png", backend="raytrace", width=1000)
             >>> scene.save("table.tex", width=6)   # TikZ, 6 cm wide
+            >>> scene.save("table.stl")            # for a 3D printer
         """
         path = FilePath(path)
         suffix = path.suffix.lower()
@@ -295,6 +298,12 @@ class Scene:
             raise ValueError(
                 "save() chooses the backend from the file extension; backend can be 'raytrace' or 'tikz'."
             )
+        elif suffix in {".obj", ".stl"}:
+            from .meshfiles import write_mesh
+
+            if options:
+                raise TypeError(f"Saving {suffix} files takes no options, got {', '.join(options)}.")
+            write_mesh(path, self)
         elif suffix == ".tex":
             self.render("tikz", **options).save(path)
         elif suffix == ".svg":
@@ -306,7 +315,7 @@ class Scene:
 
             to_figure(self, **options).savefig(path)
         else:
-            raise ValueError(f"Cannot save {path.name}: use .svg, .html, .tex, .png or .pdf.")
+            raise ValueError(f"Cannot save {path.name}: use .svg, .html, .tex, .png, .pdf, .obj or .stl.")
 
     def snapshots(self, update: Callable[[int], None], frames: int) -> list[list[Primitive]]:
         """

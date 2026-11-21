@@ -40,4 +40,7 @@ Version 0.6.0
 ==============
 
 - Numba support for faster ray tracing
+- OBJ and STL file import support for geometry objects
+- Polylines and curve support for geometry objects
+- Mesh support for geometry objects
 
