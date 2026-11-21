@@ -8,7 +8,6 @@
 }
 .minigeo-output {
   flex: 0 0 auto;
-  width: min-content; /* printed text wraps at the picture's width */
   max-width: 100%;
 }
 .minigeo-output img {
@@ -24,7 +23,6 @@
   font-size: 0.8em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  min-width: 12rem;
 }
 .minigeo-code {
   flex: 1 1 22rem;

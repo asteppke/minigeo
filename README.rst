@@ -24,8 +24,8 @@ It is meant for sketches and for understanding 3D geometry, readable first, fast
 The `manual <https://minigeo.readthedocs.io/en/latest/manual/index.html>`__ introduces the
 ideas one at a time, with every picture next to the code that draws it.
 
-.. image:: https://raw.githubusercontent.com/asteppke/minigeo/main/examples/minigeo.png
-   :alt: A table with a cup, a book and a lamp, drawn as SVG
+.. image:: https://raw.githubusercontent.com/asteppke/minigeo/main/examples/diagram.png
+   :alt: A sphere, a cylinder and a cone on a plate, ray traced in the "diagram" look
    :width: 500px
 
 Features
@@ -264,7 +264,8 @@ with everything installed (it takes a minute), Colab installs minigeo in the fir
      - `launch <https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2FCristallina.ipynb>`__
      - `open <https://colab.research.google.com/github/asteppke/minigeo/blob/main/examples/Cristallina.ipynb>`__
 
-``examples/table_scene.py`` builds the scene from the picture above, entirely with anchors;
+``examples/readme_image.py`` draws the picture above; ``examples/table_scene.py`` builds a
+room scene entirely with anchors;
 ``examples/xyz_stage.py`` builds and animates the XYZ stage.
 
 Contributing

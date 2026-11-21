@@ -34,7 +34,7 @@ def test_example_runs_and_draws(example):
         pytest.importorskip("matplotlib")
     result = minigeo_manual.run_example(example.code)
     html = minigeo_manual.output_html(result, example.options)
-    assert html.startswith('<div class="minigeo-output">')
+    assert html.startswith('<div class="minigeo-output"')
     if result.scene is not None:
         assert "<img" in html
 
@@ -73,3 +73,9 @@ def test_render_option_passes_settings_and_is_shown():
     assert all(len(line) <= 64 for line in note.splitlines())
     with pytest.raises(ValueError, match="keyword"):
         minigeo_manual.render_arguments('"cel"')
+
+
+def test_picture_column_has_the_picture_width():
+    """Without an explicit width, pictures in a shrink-to-fit column can collapse to nothing."""
+    result = minigeo_manual.run_example("scene = Scene()\nscene.add(Box([0, 0, 0], size=1))")
+    assert '<div class="minigeo-output" style="width: 180px">' in minigeo_manual.output_html(result, {"width": 180})

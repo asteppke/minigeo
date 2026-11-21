@@ -99,14 +99,16 @@ def picture(scene, options: dict) -> tuple[str, bytes]:
 def output_html(result: Result, options: dict) -> str:
     """The picture and the printed text, as HTML."""
     parts = []
+    column = ""
     if result.scene is not None:
         mime, data = picture(result.scene, options)
         width = int(options.get("width", DEFAULT_WIDTH))
+        column = f' style="width: {width}px"'  # printed text wraps at the picture's width
         source = f"data:{mime};base64,{base64.b64encode(data).decode()}"
         parts.append(f'<img src="{source}" width="{width}" alt="the picture drawn by the code">')
     if result.printed:
         parts.append(f'<pre class="minigeo-printed">{html.escape(result.printed.rstrip())}</pre>')
-    return '<div class="minigeo-output">' + "".join(parts) + "</div>"
+    return f'<div class="minigeo-output"{column}>' + "".join(parts) + "</div>"
 
 
 def render_note(options: dict) -> str:
