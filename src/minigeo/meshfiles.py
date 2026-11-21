@@ -194,7 +194,7 @@ def _parts(what) -> list[_Part]:
     if isinstance(what, Scene):
         names = _geometry_names(what)
         parts = []
-        for item in what.items:
+        for item in what.visible(what.items):
             style = what.resolved_style(item)
             color = to_rgb(style.fill) if style.fill not in (None, "none") else None
             opacity = 1.0 if style.opacity is None else float(style.opacity)

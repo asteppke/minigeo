@@ -23,7 +23,21 @@ from dataclasses import dataclass
 import numpy as np
 
 from .anchors import point_in_bounding_box
-from .geometry import Angle, Axis, Curve, Dimension, Geometry, Line, Mesh, Point, Polyline, Shape, face_normal
+from .geometry import (
+    Angle,
+    Axes,
+    Axis,
+    Curve,
+    Dimension,
+    Geometry,
+    Grid,
+    Line,
+    Mesh,
+    Point,
+    Polyline,
+    Shape,
+    face_normal,
+)
 from .groups import Group
 
 #: The words of the anchors, along x', y' and z', for -1, 0 and +1.
@@ -55,11 +69,11 @@ def pickable_points(scene) -> list[Spot]:
     otherwise by its kind and number (``"Box 1"``, ``"Box 2"``). Shapes offer the anchors
     that lie on them: all 27 of a box, but for a cylinder not the corners of the box around
     it. Lines offer their start, middle and end; groups the points of their members.
-    Annotations (angles, dimensions) offer none.
+    Annotations (angles, dimensions, axes and grids) offer none.
     """
     names = _geometry_names(scene)
     spots: list[Spot] = []
-    for item in scene.items:
+    for item in scene.visible(scene.items):  # not those on hidden layers
         for geometry in _members(item.geometry):
             spots += _spots_of(geometry, names[id(geometry)])
     return spots
@@ -155,7 +169,7 @@ def _geometry_names(scene) -> dict[int, str]:
 
 
 def _spots_of(geometry: Geometry, name: str) -> list[Spot]:
-    if isinstance(geometry, Angle | Dimension):
+    if isinstance(geometry, Angle | Dimension | Axes | Grid):
         return []
     if isinstance(geometry, Point):
         return [Spot(np.asarray(geometry.position, dtype=float), name)]

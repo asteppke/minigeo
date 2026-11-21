@@ -50,6 +50,7 @@ class SceneItem:
     geometry: Geometry | Group
     style: Style
     face_styles: dict[FaceKey, Style] = field(default_factory=dict)
+    layer: str = "main"
 
 
 @dataclass
@@ -60,6 +61,7 @@ class SceneLabel:
     text: str
     at: str | float | np.ndarray
     style: Style
+    layer: str = "main"
 
     @property
     def position(self) -> np.ndarray:
@@ -84,6 +86,7 @@ class SceneFrame:
     colors: tuple[str, str, str]
     style: Style
     on_top: bool
+    layer: str = "main"
 
     def origin_axes_length(self) -> tuple[np.ndarray, np.ndarray, float]:
         if isinstance(self.target, Shape):
@@ -104,6 +107,10 @@ class Scene:
     Styles are combined from general to specific: the library defaults, then defaults for
     the kind of geometry (axes are arrows), then the scene's ``style``, then each item's own,
     and finally the styles of single faces.
+
+    Everything in a scene sits on a *layer*, ``"main"`` unless ``layer=`` says otherwise.
+    Layers can be hidden and shown again (:meth:`hide`, :meth:`show`) or cleared
+    (:meth:`clear`); single geometries can be taken out with :meth:`remove`.
     """
 
     def __init__(self, style: Style | None = None):
@@ -115,6 +122,7 @@ class Scene:
         self.items: list[SceneItem] = []
         self.labels: list[SceneLabel] = []
         self.frames: list[SceneFrame] = []
+        self.hidden: set[str] = set()  # names of hidden layers
 
     def add(
         self,
@@ -125,6 +133,7 @@ class Scene:
         label_at: str | float | np.ndarray | None = None,
         face_styles: dict[FaceKey, Style] | None = None,
         frame: bool = False,
+        layer: str = "main",
         **style_fields,
     ) -> Drawable:
         """
@@ -139,6 +148,7 @@ class Scene:
             face_styles: Styles for single faces of a shape, by index or by name
                 (for boxes: bottom, top, front, back, left, right).
             frame: Also draw the shape's own axes x', y', z' (see :meth:`add_frame`).
+            layer: The layer it goes on, together with its label and frame.
             **style_fields: Shortcuts for single style fields, e.g. ``fill="red"``;
                 they win over ``style``.
 
@@ -149,12 +159,12 @@ class Scene:
         item_style = (style if style is not None else Style()) | Style(**style_fields)
         if face_styles:
             _check_face_keys(geometry, face_styles)
-        self.items.append(SceneItem(geometry, item_style, dict(face_styles or {})))
+        self.items.append(SceneItem(geometry, item_style, dict(face_styles or {}), layer))
         if label is not None:
             at = label_at if label_at is not None else getattr(geometry, "label_anchor", "center")
-            self.labels.append(SceneLabel(geometry, label, at, item_style))
+            self.labels.append(SceneLabel(geometry, label, at, item_style, layer))
         if frame:
-            self.add_frame(geometry)
+            self.add_frame(geometry, layer=layer)
         return geometry
 
     def add_frame(
@@ -166,6 +176,7 @@ class Scene:
         colors: tuple[str, str, str] = ("red", "green", "blue"),
         on_top: bool = True,
         style: Style | None = None,
+        layer: str = "main",
         **style_fields,
     ) -> None:
         """
@@ -182,6 +193,7 @@ class Scene:
             on_top: Paint the arrows over all faces in the SVG and matplotlib backends, so
                 they stay visible inside the shape. (Plotly always shows true depth.)
             style: Further style for the arrows and labels.
+            layer: The layer the arrows go on.
             **style_fields: Single style fields, e.g. ``line_width=2``.
 
         Example:
@@ -195,7 +207,9 @@ class Scene:
         if labels is None:
             labels = ("x′", "y′", "z′") if isinstance(target, Shape | Frame) else ("x", "y", "z")
         frame_style = (style if style is not None else Style()) | Style(**style_fields)
-        self.frames.append(SceneFrame(target, length, tuple(labels), tuple(colors), frame_style, on_top))
+        self.frames.append(
+            SceneFrame(target, length, tuple(labels), tuple(colors), frame_style, on_top, layer)
+        )
 
     def label(
         self,
@@ -203,6 +217,8 @@ class Scene:
         text: str,
         at: str | float | np.ndarray = "center",
         style: Style | None = None,
+        *,
+        layer: str = "main",
         **style_fields,
     ) -> None:
         """
@@ -216,7 +232,73 @@ class Scene:
             >>> scene.label([0, 0, 2], "origin is below", text_color="gray")
         """
         label_style = (style if style is not None else Style()) | Style(**style_fields)
-        self.labels.append(SceneLabel(target, text, at, label_style))
+        self.labels.append(SceneLabel(target, text, at, label_style, layer))
+
+    # ------------------------------------------------------------ editing
+
+    def remove(self, geometry: Geometry | Group) -> None:
+        """
+        Take a geometry out of the scene, with its labels and frame.
+
+        Raises:
+            ValueError: If the geometry was not added to the scene (as a whole: a member of
+                an added group cannot be removed on its own).
+
+        Example:
+            >>> scene.remove(box)
+        """
+        before = len(self.items) + len(self.labels) + len(self.frames)
+        self.items = [item for item in self.items if item.geometry is not geometry]
+        self.labels = [label for label in self.labels if label.target is not geometry]
+        self.frames = [frame for frame in self.frames if frame.target is not geometry]
+        if len(self.items) + len(self.labels) + len(self.frames) == before:
+            raise ValueError(f"{geometry!r} is not in this scene.")
+
+    def clear(self, layer: str | None = None) -> None:
+        """
+        Remove everything, or everything on one layer.
+
+        Example:
+            >>> scene.clear("construction")
+        """
+        if layer is not None:
+            self._check_layers([layer])
+        self.items = [item for item in self.items if layer is not None and item.layer != layer]
+        self.labels = [label for label in self.labels if layer is not None and label.layer != layer]
+        self.frames = [frame for frame in self.frames if layer is not None and frame.layer != layer]
+        self.hidden &= set(self.layers)
+
+    @property
+    def layers(self) -> list[str]:
+        """The names of the layers in use, in the order they were first used."""
+        names = [entry.layer for entry in [*self.items, *self.labels, *self.frames]]
+        return list(dict.fromkeys(names))
+
+    def hide(self, *layers: str) -> None:
+        """
+        Leave layers out when the scene is drawn, until :meth:`show` brings them back.
+
+        Example:
+            >>> scene.add(Dimension(a, b), layer="dimensions")
+            >>> scene.hide("dimensions")
+        """
+        self._check_layers(layers)
+        self.hidden |= set(layers)
+
+    def show(self, *layers: str) -> None:
+        """Draw hidden layers again; without names, all of them."""
+        self._check_layers(layers)
+        self.hidden -= set(layers) if layers else set(self.hidden)
+
+    def visible(self, entries: list) -> list:
+        """The items, labels or frames that are not on a hidden layer."""
+        return [entry for entry in entries if entry.layer not in self.hidden]
+
+    def _check_layers(self, layers) -> None:
+        unknown = [name for name in layers if name not in self.layers]
+        if unknown:
+            known = ", ".join(self.layers) or "none"
+            raise ValueError(f"No layer named {', '.join(map(repr, unknown))}; layers: {known}.")
 
     def resolved_style(self, item: SceneItem | SceneLabel) -> Style:
         """The complete style an item or label is drawn with."""
@@ -226,14 +308,14 @@ class Scene:
     def primitives(self) -> list[Primitive]:
         """Everything in the scene as neutral primitives (faces, paths, markers, labels)."""
         result: list[Primitive] = []
-        for item in self.items:
+        for item in self.visible(self.items):
             primitives = to_primitives(item.geometry, self.resolved_style(item))
             if item.face_styles:
                 primitives = _restyle_faces(item.geometry, primitives, item.face_styles)
             result.extend(primitives)
-        for frame in self.frames:
+        for frame in self.visible(self.frames):
             result.extend(self._frame_primitives(frame))
-        for label in self.labels:
+        for label in self.visible(self.labels):
             align = getattr(label.target, "label_align", "left")
             result.append(Label(label.position, label.text, self.resolved_style(label), align=align))
         return result
@@ -420,7 +502,8 @@ class Scene:
         return len(self.items)
 
     def __repr__(self) -> str:
-        return f"Scene with {len(self.items)} items"
+        hidden = f", hidden: {', '.join(sorted(self.hidden))}" if self.hidden else ""
+        return f"Scene with {len(self.items)} items on layers {', '.join(self.layers) or 'none'}{hidden}"
 
 
 def _face_index(geometry, key: FaceKey) -> int:

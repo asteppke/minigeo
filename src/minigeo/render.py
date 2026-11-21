@@ -13,7 +13,20 @@ from functools import singledispatch
 
 import numpy as np
 
-from .geometry import Angle, Axis, Dimension, Geometry, Line, Plane, Point, Polyline, Shape, Vector
+from .geometry import (
+    Angle,
+    Axes,
+    Axis,
+    Dimension,
+    Geometry,
+    Grid,
+    Line,
+    Plane,
+    Point,
+    Polyline,
+    Shape,
+    Vector,
+)
 from .groups import Group
 from .style import Style
 
@@ -150,6 +163,32 @@ def _(dimension: Dimension, style: Style) -> list[Primitive]:
 
 
 @to_primitives.register
+def _(axes: Axes, style: Style) -> list[Primitive]:
+    primitives: list[Primitive] = []
+    for axis in axes.present:
+        start, end = axes.axis_ends(axis)
+        primitives.append(Path(np.array([start, end]), style))
+        name = axes.names[axis] if axis < len(axes.names) else ""
+        if name:
+            primitives.append(Label(end, name, style))
+    tick, number = style.with_(arrow=False), style.with_(font_size=0.8 * style.font_size)
+    for axis, fraction, text in axes.ticks:
+        start, end = axes.axis_ends(axis)
+        point = start + fraction * (end - start)
+        across = axes.tick_direction(axis) * axes.tick_length
+        primitives.append(Path(np.array([point - across / 2, point + across / 2]), tick))
+        primitives.append(Label(point - 2.5 * across, text, number, align="center"))  # beyond the tick
+    return primitives
+
+
+@to_primitives.register
+def _(grid: Grid, style: Style) -> list[Primitive]:
+    # one path per side of each cell, so that painter's backends sort them as well as faces
+    line = style.with_(arrow=False)
+    return [Path(points, line) for points in grid.pieces]
+
+
+@to_primitives.register
 def _(group: Group, style: Style) -> list[Primitive]:
     return [primitive for member in group.geometries for primitive in to_primitives(member, style)]
 
@@ -164,6 +203,10 @@ def type_style(geometry: Geometry | Group) -> Style:
         return Style(fill="none", stroke="black")
     if isinstance(geometry, Dimension):
         return Style(stroke="black", line_width=0.8)
+    if isinstance(geometry, Axes):
+        return Style(stroke="black", line_width=0.8, arrow=True)
+    if isinstance(geometry, Grid):
+        return Style(stroke="lightgray", line_width=0.5)
     return Style()
 
 

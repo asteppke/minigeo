@@ -495,15 +495,15 @@ class _Contents:
         contents = cls([], [], [], [], [])
         owners: dict[int, int] = {}  # id(geometry) -> scene item index
         outlines: set = set()  # outline segments already drawn, as rounded end points
-        for index, item in enumerate(scene.items):
+        for index, item in enumerate(scene.visible(scene.items)):
             style = scene.resolved_style(item)
             for geometry, primitives in _pieces(item.geometry, style, item.face_styles):
                 owners[id(geometry)] = index
                 contents._add(geometry, primitives, index, outlines)
             owners[id(item.geometry)] = index
-        for frame in scene.frames:
+        for frame in scene.visible(scene.frames):
             contents._add(None, scene._frame_primitives(frame), -1, outlines)
-        for scene_label in scene.labels:
+        for scene_label in scene.visible(scene.labels):
             align = getattr(scene_label.target, "label_align", "left")
             label = Label(scene_label.position, scene_label.text, scene.resolved_style(scene_label), align)
             contents.labels.append(_Label(label, frozenset(_owners_of(scene_label.target, owners))))

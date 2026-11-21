@@ -50,3 +50,9 @@ Version 0.6.1
 
 - Improved handling of line intersections with geometry objects
 - Small bug fixes
+
+Version 0.6.2
+==============
+
+- Axes support for geometry objects
+- Minimal layer support for scenes

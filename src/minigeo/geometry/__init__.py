@@ -19,6 +19,7 @@ from ..anchors import (
 )
 from ..transform import Transform, rotate_arbitrary_vector_matrix, split_rotation
 from .annotations import Angle, Dimension
+from .axes import Axes, Grid
 from .base import Geometry
 from .curves import Curve, Polyline
 from .mesh import Mesh
@@ -31,6 +32,7 @@ __all__ = [
     "ANCHOR_WORDS",
     "LINE_POSITIONS",
     "Angle",
+    "Axes",
     "Axis",
     "Box",
     "Circle",
@@ -39,6 +41,7 @@ __all__ = [
     "Cylinder",
     "Dimension",
     "Geometry",
+    "Grid",
     "Line",
     "Mesh",
     "Plane",

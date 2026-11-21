@@ -13,7 +13,8 @@ Scenes and styles
 A :class:`Scene` collects geometries with their :class:`Style` and draws them with a backend.
 
 .. autoclass:: Scene
-   :members: add, label, add_frame, render, save, animate, measure, snapshots, primitives, bounds
+   :members: add, label, add_frame, remove, clear, layers, hide, show, visible, render, save, animate,
+             measure, snapshots, primitives, bounds
 
 .. autoclass:: Style
    :members: with_, is_complete
@@ -61,6 +62,14 @@ Points, lines and vectors
    :members: between, origin, components, length, direction, dot, cross, angle_to, projected_onto
 .. autoclass:: Axis
    :members: length
+
+Axes and grids
+==============
+
+.. autoclass:: Axes
+   :members: grid, axis_ends, tick_direction, present
+.. autoclass:: Grid
+   :members: flat, through, lines
 
 Planes, angles and dimensions
 =============================

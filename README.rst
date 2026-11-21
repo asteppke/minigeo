@@ -36,7 +36,7 @@ Features
   ``Mesh`` for any faces; read and write OBJ and STL files with numpy only.
 - **Measuring**: ``Vector`` (with dot and cross products), ``Plane`` (distances, projections,
   intersections), where lines enter and leave shapes (``box.intersect(line)``), ``Angle`` arcs
-  and ``Dimension`` lines, as in technical drawings.
+  and ``Dimension`` lines, as in technical drawings; ``Axes`` with numbered ticks and grids.
 - **Transforms**: translation, rotation (about any axis and any point), scaling and shear as
   composable 4x4 matrices: ``t @ shape``, ``t1 @ t2``.
 - **Own axes**: every shape has a pose with its own perpendicular axes x', y', z' that turn
@@ -46,7 +46,8 @@ Features
 - **Frames and joints**: chains of parts that carry each other, such as an XYZ stage or a
   diffractometer, moved by sliding and turning joints: ``x.value = 0.3``.
 - **Scenes and styles**: geometry is independent of drawing; a ``Scene`` adds colors, opacity,
-  dashes, arrows and labels, with math such as ``r"$\theta = \frac{\pi}{3}$"`` in every backend.
+  dashes, arrows and labels, with math such as ``r"$\theta = \frac{\pi}{3}$"`` in every backend;
+  layers can be hidden and shown, and geometries removed.
 - **Backends**: SVG (vector drawings), TikZ (for LaTeX), matplotlib (3D axes), plotly
   (interactive, WebGL) and a ray tracer (light, shadows, exact spheres and cylinders, and
   looks for diagrams: cel shading, outlines, ambient occlusion), all with the same camera;

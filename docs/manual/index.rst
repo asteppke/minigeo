@@ -32,9 +32,11 @@ complete list of classes and arguments, see the :doc:`API reference <../api>`.
    own-axes
    anchors
    styles
+   editing
    curves
    meshes
    measuring
+   axes
    frames
    backends
    looks

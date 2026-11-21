@@ -13,6 +13,7 @@ from importlib.metadata import PackageNotFoundError, version
 from .frames import Frame
 from .geometry import (
     Angle,
+    Axes,
     Axis,
     Box,
     Circle,
@@ -20,6 +21,7 @@ from .geometry import (
     Curve,
     Cylinder,
     Dimension,
+    Grid,
     Line,
     Mesh,
     Plane,
@@ -43,6 +45,7 @@ except PackageNotFoundError:  # pragma: no cover - package not installed
 
 __all__ = [
     "Angle",
+    "Axes",
     "Axis",
     "Box",
     "Circle",
@@ -51,6 +54,7 @@ __all__ = [
     "Cylinder",
     "Dimension",
     "Frame",
+    "Grid",
     "Group",
     "Line",
     "Mesh",

@@ -64,7 +64,9 @@ manual (`docs/manual`, first version); 3. TikZ backend; 5. looks for the ray tra
 7. picking and measuring (matplotlib); curves (`Polyline`, `Curve`) and `Mesh` with OBJ/STL
 files; 8. math in labels (`math_labels.py`: mathtext outlines for SVG and the ray tracer,
 LaTeX for TikZ, Unicode with `<sup>`/`<sub>` for plotly); lines meeting shapes
-(`intersect.py`: exact for spheres and cylinders via `exact.unit_map`, faces otherwise).
+(`intersect.py`: exact for spheres and cylinders via `exact.unit_map`, faces otherwise);
+`Axes` with ticks and `Grid` (`geometry/axes.py`); `Scene.remove` and layers (`hide`, `show`,
+`clear`; backends draw `scene.visible(...)` only).
 
 Suggested order for the next steps, with what each one needs first:
 
