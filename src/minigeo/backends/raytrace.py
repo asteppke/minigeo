@@ -84,7 +84,10 @@ class Look:
         occlusion: Ambient occlusion, from 0 (off) to 1: darkens corners, creases and places
             close to other surfaces, where less light from the surroundings arrives.
         occlusion_radius: How far surfaces darken each other, as a fraction of the scene's size.
-        occlusion_samples: Directions tested per point; more is smoother but slower.
+        occlusion_samples: Rays per point; more is smoother but slower. With the numba engine
+            they go in random directions per point (rounded to a square number), with numpy
+            in a fixed set of directions. None: 64 random rays with numba, 24 fixed
+            directions with numpy (about equally fast, the random ones without rings).
         outlines: Draw lines around objects and along sharp edges (from the rendered picture,
             so they follow exact spheres and cylinders too).
         outline_color: Color of the outlines.
@@ -101,7 +104,7 @@ class Look:
     ambient: float = AMBIENT
     occlusion: float = 0.0
     occlusion_radius: float = 0.15
-    occlusion_samples: int = 24
+    occlusion_samples: int | None = None
     outlines: bool = False
     outline_color: str = "black"
     outline_width: float = 1.5
@@ -117,7 +120,7 @@ class Look:
         for name in ("ambient", "occlusion"):
             if not 0 <= getattr(self, name) <= 1:
                 raise ValueError(f"{name} must be between 0 and 1.")
-        if self.occlusion_samples < 1 or self.occlusion_radius <= 0:
+        if (self.occlusion_samples is not None and self.occlusion_samples < 1) or self.occlusion_radius <= 0:
             raise ValueError("occlusion_samples and occlusion_radius must be positive.")
         if self.palette is not None:
             object.__setattr__(self, "palette", tuple(self.palette))
@@ -726,14 +729,27 @@ class _Surfaces:
                 self.colors[index, part] = _rgb(style.fill)
                 self.opacities[index, part] = style.opacity
 
-    def cast(self, origins: np.ndarray, direction: np.ndarray, start: np.ndarray) -> _Hits:
-        """The nearest hit of each ray ``origin + t * direction`` with ``t > start``."""
+    def cast(self, origins: np.ndarray, direction: np.ndarray, start: np.ndarray, stop=None) -> _Hits:
+        """
+        The nearest hit of each ray ``origin + t * direction`` with ``start < t < stop``.
+
+        ``direction`` is one direction for all rays; the numba engine also takes one per ray
+        (``(n, 3)``). ``stop`` (one value or one per ray) ends the rays early.
+        """
         count = len(origins)
         hits = _Hits(np.full(count, np.inf), np.full(count, -1), np.zeros(count, dtype=int))
         if count == 0 or not self.surfaces:
             return hits
         if self.engine == "numba":
-            return self._cast_compiled(origins, direction, start)
+            stop = None if stop is None else np.broadcast_to(np.asarray(stop, dtype=float), (count,))
+            return self._cast_compiled(origins, direction, start, stop)
+        if np.ndim(direction) != 1:
+            raise ValueError("The numpy engine casts parallel rays only: one direction for all.")
+        if stop is not None:
+            hits = self.cast(origins, direction, start)
+            beyond = hits.distance >= stop
+            hits.distance[beyond], hits.surface[beyond], hits.part[beyond] = np.inf, -1, 0
+            return hits
         across, up = _basis(direction)
         ray_u, ray_v, ray_w = origins @ across, origins @ up, origins @ direction
         order = np.argsort(ray_u, kind="stable")
@@ -790,7 +806,7 @@ class _Surfaces:
             hits.part[rays] = part[better]
         return hits
 
-    def _cast_compiled(self, origins, direction, start) -> _Hits:
+    def _cast_compiled(self, origins, direction, start, stop=None) -> _Hits:
         """The same as :meth:`cast`, walking a bounding volume hierarchy in compiled code (numba)."""
         if self._accelerator is None:
             from . import _fastcast
@@ -802,7 +818,7 @@ class _Surfaces:
                 [self.from_world[i] for i in self.exact],
                 [shape.box_corners() for shape in exact],
             )
-        distance, primitive, part = self._accelerator.cast(origins, direction, start)
+        distance, primitive, part = self._accelerator.cast(origins, direction, start, stop)
         triangles = len(self.triangles)
         found = primitive >= 0
         is_triangle = found & (primitive < triangles)
@@ -925,15 +941,20 @@ class _Lighting:
         How open each point is to its surroundings (ambient occlusion): 1 if no surface lies
         within ``occlusion_radius`` above it, down to 0 if it is enclosed.
 
-        Rays are cast in a fixed set of directions spread over the sphere (the same for all
-        points, so they stay parallel and fast to cast); each counts with the cosine of its
-        angle to the normal. ``turn`` chooses one of several turned copies of the set, so that
-        neighbouring pixels sample different directions.
+        With the numba engine, every point casts its own random rays (see
+        :meth:`random_openness`). The numpy engine can only cast parallel rays, so it uses a
+        fixed set of directions spread over the sphere, the same for all points; each counts
+        with the cosine of its angle to the normal. ``turn`` chooses one of several turned
+        copies of the set (or a different random seed), so that neighbouring pixels sample
+        different directions.
         """
+        if self.surfaces.engine == "numba":
+            return self.random_openness(points, normals, seed=turn)
         origins = points + normals * 1e3 * self.surfaces.epsilon
         blocked = np.zeros(len(points))
         total = np.zeros(len(points))
-        for direction in _sphere_directions(2 * self.look.occlusion_samples, turn):
+        samples = self.look.occlusion_samples or FIXED_OCCLUSION_SAMPLES
+        for direction in _sphere_directions(2 * samples, turn):
             weight = normals @ direction
             above = np.nonzero(weight > 0)[0]
             if above.size == 0:
@@ -947,6 +968,41 @@ class _Lighting:
             blocked[above] += weight[above] * opacity
             total[above] += weight[above]
         return 1 - np.divide(blocked, total, out=np.zeros_like(blocked), where=total > 0)
+
+    def random_openness(self, points: np.ndarray, normals: np.ndarray, seed: int = 0) -> np.ndarray:
+        """
+        Ambient occlusion with random rays, which the numba engine can cast in any direction.
+
+        Each point casts ``occlusion_samples`` rays into the half space above its surface,
+        more of them near the normal (cosine weighted, so they count equally). The directions
+        are stratified (one per cell of a grid) and shifted randomly per point, so that
+        neighbouring points sample different directions: the result is fine noise, which the
+        smoothing over surfaces removes, instead of the rings a fixed set of directions leaves.
+        The random numbers come from a fixed ``seed``, so the same scene gives the same picture.
+        """
+        count = len(points)
+        side = max(int(round(np.sqrt(self.look.occlusion_samples or RANDOM_OCCLUSION_SAMPLES))), 1)
+        rng = np.random.default_rng(12345 + seed)
+        shift = rng.random((count, 2))  # one random shift of the grid per point
+        tangent, bitangent = _tangents(normals)
+        origins = points + normals * 1e3 * self.surfaces.epsilon
+        stop = np.full(count, self.radius)
+        blocked = np.zeros(count)
+        for k in range(side * side):
+            cell = np.array(divmod(k, side), dtype=float)
+            u = np.mod((cell + rng.random((count, 2))) / side + shift, 1.0)
+            radius, angle = np.sqrt(u[:, 0]), 2 * np.pi * u[:, 1]
+            directions = (
+                (radius * np.cos(angle))[:, None] * tangent
+                + (radius * np.sin(angle))[:, None] * bitangent
+                + np.sqrt(1 - u[:, 0])[:, None] * normals
+            )
+            hits = self.surfaces.cast(origins, directions, np.zeros(count), stop)
+            near = np.isfinite(hits.distance)
+            blocked[near] += self.surfaces.opacities[
+                hits.surface[near], self.surfaces.part_index(_subset(hits, near))
+            ]
+        return 1 - blocked / (side * side)
 
     def light_reaching(self, points: np.ndarray) -> np.ndarray:
         """How much light reaches each point: 1 unblocked, less behind transparent faces, 0 in shadow."""
@@ -970,6 +1026,14 @@ def _subset(hits: _Hits, mask: np.ndarray) -> _Hits:
     return _Hits(hits.distance[mask], hits.surface[mask], hits.part[mask])
 
 
+def _tangents(normals: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Two unit vectors per normal, perpendicular to it and to each other."""
+    helper = np.where(np.abs(normals[:, :1]) < 0.9, [[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]])
+    tangent = np.cross(helper, normals)
+    tangent /= np.linalg.norm(tangent, axis=1, keepdims=True)
+    return tangent, np.cross(normals, tangent)
+
+
 def _sphere_directions(count: int, turn: int = 0) -> np.ndarray:
     """
     ``count`` unit vectors spread evenly over the sphere (a Fibonacci lattice); different
@@ -985,6 +1049,12 @@ def _sphere_directions(count: int, turn: int = 0) -> np.ndarray:
         directions = directions @ Transform().rotate(axis, 47.0 * turn).matrix[:3, :3].T
     return directions
 
+
+#: Rays per point for ambient occlusion when ``occlusion_samples`` is None: a fixed set of
+#: directions with the numpy engine, random rays with numba (which needs more of them for the
+#: same smoothness, but casts them faster).
+FIXED_OCCLUSION_SAMPLES = 24
+RANDOM_OCCLUSION_SAMPLES = 64
 
 #: How many turned direction sets neighbouring pixels use for ambient occlusion (2 x 2 pattern).
 OCCLUSION_TURNS = 4

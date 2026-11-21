@@ -69,8 +69,9 @@ def test_rays_in_different_directions():
 
 
 @needs_numba
-@pytest.mark.parametrize("look", ["natural", "diagram"])
+@pytest.mark.parametrize("look", ["natural", "cel"])
 def test_pictures_are_the_same(look):
+    """Without ambient occlusion (which numba samples differently), both engines agree."""
     scene = mixed_scene()
     slow = raytrace.render(scene, width=160, look=look, engine="numpy").pixels.astype(int)
     fast = raytrace.render(scene, width=160, look=look, engine="numba").pixels.astype(int)
@@ -135,3 +136,74 @@ def test_engine_through_scene_and_animation():
         lambda i: box.rotate("z", 30), frames=2, backend="raytrace", width=40, engine="numba"
     )
     assert len(movie) == 2
+
+
+# ---------------------------------------------------------------- random ambient occlusion
+
+
+def wall_scene():
+    """A floor with a wall much larger than the occlusion radius."""
+    scene = Scene()
+    scene.add(Box([0, 0, 0], size=(10, 10, 0.1), anchor="top"), fill="white")
+    scene.add(Box([0, 0, 0], size=(0.2, 10, 10), anchor="bottom left"), fill="white")
+    return scene
+
+
+def lighting(engine, **look):
+    surfaces = raytrace._Surfaces(raytrace._Contents.collect(wall_scene()).surfaces, 10, engine)
+    return raytrace._Lighting(surfaces, raytrace.Camera().light, raytrace.Look(occlusion=1, **look), 10)
+
+
+@needs_numba
+@pytest.mark.parametrize("engine", ["numpy", "numba"])
+def test_a_wall_blocks_half_of_the_surroundings(engine):
+    """Right next to a large wall, the floor sees half of its hemisphere (cosine weighted)."""
+    light = lighting(engine, occlusion_samples=400, occlusion_radius=0.05)
+    up = np.tile([0.0, 0.0, 1.0], (50, 1))
+    beside_wall = np.column_stack([np.full(50, -1e-4), np.linspace(-1, 1, 50), np.zeros(50)])
+    far_away = beside_wall + [-3, 0, 0]
+    assert light.openness(beside_wall, up).mean() == pytest.approx(0.5, abs=0.03)
+    assert np.allclose(light.openness(far_away, up), 1)
+
+
+@needs_numba
+def test_random_occlusion_is_reproducible_and_varies_between_points():
+    light = lighting("numba", occlusion_samples=16, occlusion_radius=0.05)
+    up = np.tile([0.0, 0.0, 1.0], (200, 1))
+    points = np.column_stack([np.full(200, -0.01), np.linspace(-1, 1, 200), np.zeros(200)])
+    first, again = light.openness(points, up), light.openness(points, up)
+    assert np.array_equal(first, again)  # a fixed seed
+    assert len(np.unique(first)) > 3  # every point samples its own directions
+    assert not np.array_equal(first, light.openness(points, up, turn=1))
+
+
+def test_default_number_of_occlusion_rays_depends_on_the_engine():
+    assert raytrace.Look().occlusion_samples is None
+    assert raytrace.FIXED_OCCLUSION_SAMPLES == 24 and raytrace.RANDOM_OCCLUSION_SAMPLES == 64
+    with pytest.raises(ValueError):
+        raytrace.Look(occlusion_samples=0)
+
+
+@needs_numba
+def test_occlusion_pictures_of_both_engines_are_close():
+    scene = mixed_scene()
+    slow = raytrace.render(scene, width=160, look="soft", engine="numpy").pixels.astype(int)
+    fast = raytrace.render(scene, width=160, look="soft", engine="numba").pixels.astype(int)
+    assert np.abs(slow - fast).mean() < 2  # out of 255: the same occlusion, sampled differently
+
+
+@needs_numba
+def test_rays_stop_early():
+    slow, fast = both_engines(mixed_scene())
+    origins = np.array([[0.0, 0.0, 3.0], [0.0, 0.0, 3.0]])
+    for surfaces in (slow, fast):
+        far = surfaces.cast(origins, np.array([0, 0, -1.0]), np.zeros(2))
+        near = surfaces.cast(origins, np.array([0, 0, -1.0]), np.zeros(2), stop=[far.distance[0] / 2, np.inf])
+        assert np.isinf(near.distance[0]) and near.surface[0] == -1
+        assert near.distance[1] == pytest.approx(far.distance[1])
+
+
+def test_numpy_engine_needs_parallel_rays():
+    surfaces = raytrace._Surfaces(raytrace._Contents.collect(mixed_scene()).surfaces, 5, "numpy")
+    with pytest.raises(ValueError, match="parallel"):
+        surfaces.cast(np.zeros((2, 3)), np.array([[0, 0, 1.0], [1.0, 0, 0]]), np.zeros(2))

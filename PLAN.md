@@ -72,7 +72,8 @@ Suggested order for the next steps, with what each one needs first:
 Shared groundwork: the exact-shape hook is done (`exact.py`, used by the ray tracer and meant
 for Mitsuba); the optional numba engine (`backends/_fastcast.py`, extra `fast`) casts rays in
 any direction. Still open: a perspective option for `Camera` (for 4 and ray tracing phase 2),
-which the numba engine now makes easy.
+which the numba engine now makes easy. With numba, ambient occlusion already uses random rays
+per point (no rings or blotches).
 
 ## Backlog
 

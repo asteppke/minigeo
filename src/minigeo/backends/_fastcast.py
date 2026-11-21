@@ -75,11 +75,14 @@ class Accelerator:
         high = np.concatenate(high) if high else np.zeros((0, 3))
         self.tree = _build_tree(low, high)
 
-    def cast(self, origins: np.ndarray, directions: np.ndarray, start: np.ndarray):
+    def cast(
+        self, origins: np.ndarray, directions: np.ndarray, start: np.ndarray, stop: np.ndarray | None = None
+    ):
         """
-        The nearest hit of each ray ``origin + t * direction`` with ``t > start``.
+        The nearest hit of each ray ``origin + t * direction`` with ``start < t < stop``.
 
-        ``directions`` is ``(n, 3)``, or ``(3,)`` for parallel rays.
+        ``directions`` is ``(n, 3)``, or ``(3,)`` for parallel rays. ``stop`` (default: no
+        limit) lets rays that only look nearby, e.g. for ambient occlusion, skip the rest.
 
         Returns:
             (distance, primitive, part): ``distance`` is inf where nothing was hit;
@@ -90,12 +93,13 @@ class Accelerator:
         directions = np.ascontiguousarray(np.atleast_2d(directions), dtype=np.float64)
         start = np.ascontiguousarray(start, dtype=np.float64)
         count = len(origins)
+        stop = np.full(count, np.inf) if stop is None else np.ascontiguousarray(stop, dtype=np.float64)
         distance = np.full(count, np.inf)
         primitive = np.full(count, -1, dtype=np.int64)
         part = np.zeros(count, dtype=np.int64)
         if count and len(self.kind):
             low, high, left, right, first, size, axes, order = self.tree
-            _walk(origins, directions, start, low, high, left, right, first, size, axes, order,
+            _walk(origins, directions, start, stop, low, high, left, right, first, size, axes, order,
                   self.kind, self.ref, self.v0, self.e1, self.e2, self.area, self.inverse,
                   distance, primitive, part)  # fmt: skip
         return distance, primitive, part
@@ -291,7 +295,7 @@ if numba is not None:
         return found, part
 
     @numba.njit(parallel=True, cache=True)
-    def _walk(origins, directions, start, low, high, left, right, first, size, axes, order,
+    def _walk(origins, directions, start, stop, low, high, left, right, first, size, axes, order,
               kind, ref, v0, e1, e2, area, inverse, distance, primitive, part):  # fmt: skip
         count = origins.shape[0]
         shared = directions.shape[0] == 1
@@ -306,7 +310,7 @@ if numba is not None:
                 iy = 1.0 / dy if dy != 0 else np.inf
                 iz = 1.0 / dz if dz != 0 else np.inf
                 tmin = start[r]
-                best, hit, which = np.inf, -1, 0
+                best, hit, which = stop[r], -1, 0
                 stack[0] = 0
                 depth = 1
                 while depth > 0:
@@ -333,6 +337,6 @@ if numba is not None:
                             t, piece = _hit_exact(kind[p], inverse[index], ox, oy, oz, dx, dy, dz, tmin, best)
                             if t < best:
                                 best, hit, which = t, p, piece
-                distance[r] = best
+                distance[r] = best if hit >= 0 else np.inf
                 primitive[r] = hit
                 part[r] = which

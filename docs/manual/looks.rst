@@ -40,6 +40,11 @@ Natural and soft
 light from the surroundings reaches less easily (corners, creases, the floor right next to
 an object) become darker. It shows how things touch and stand on each other.
 
+Ambient occlusion is found by casting rays from every point into its surroundings. With the
+optional numba engine (see :doc:`backends`), each point casts its own random rays, which gives
+the smoothest result; the numpy engine uses one fixed set of directions for all points, which
+can leave faint blotches. ``occlusion_samples`` sets the number of rays per point.
+
 .. minigeo-example::
    :backend: raytrace
    :render: look="soft"
