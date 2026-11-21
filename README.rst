@@ -201,7 +201,10 @@ something lies in front of them.
    image.save("scene.png")                                    # or .jpg, .webp
    scene.render("raytrace", shadows=False, background="white")
 
-It is written in numpy and takes about a second for a 500-pixel image.
+It is written in numpy and takes about a second for a 500-pixel image. With the optional
+``fast`` extra (``pip install ".[ray,fast]"``), rays are cast by compiled code from numba on all
+processor cores instead: several times faster, with the same pictures. It is used whenever
+numba is installed; ``engine="numpy"`` or ``engine="numba"`` chooses explicitly.
 
 For diagrams, *looks* replace the photo-like light: ``look="cel"`` (flat bands of color and
 outlines), ``look="soft"`` (ambient occlusion instead of shadows), ``look="diagram"`` (both)
@@ -226,7 +229,7 @@ drawn like the SVG picture. Labels are LaTeX (``"$2\theta$"``).
 Installation
 ------------
 Clone the repository and install it with the backends you want (``mpl``, ``svg``, ``plotly``,
-``ray``), or all of them:
+``ray``), or all of them, and optionally ``fast`` for a faster ray tracer (numba):
 
 .. code-block:: bash
 

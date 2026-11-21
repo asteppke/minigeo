@@ -40,7 +40,8 @@ from PIL import Image, ImageColor, ImageDraw, ImageFont, PngImagePlugin, feature
 
 from ..camera import Camera
 from ..colors import to_rgb
-from ..geometry import Cone, Cylinder, Geometry, Sphere
+from ..exact import ExactShape, exact_shape
+from ..geometry import Geometry
 from ..groups import Group
 from ..render import Face, Label, Marker, Path, Primitive, to_primitives
 from ..style import Style, color_value
@@ -275,6 +276,7 @@ def render(
     samples: int = 3,
     background: str | None = None,
     look: str | Look = "natural",
+    engine: str = "auto",
     **look_changes,
 ) -> RaytracedImage:
     """
@@ -290,6 +292,8 @@ def render(
         background: A background color, or None for a transparent background.
         look: How surfaces are shaded: a name from :data:`LOOKS` (``"natural"``, ``"soft"``,
             ``"cel"``, ``"diagram"``, ``"print"``) or a :class:`Look`.
+        engine: How rays are cast: ``"numba"`` (compiled and parallel, much faster; needs
+            ``pip install "minigeo[fast]"``), ``"numpy"``, or ``"auto"`` (numba if installed).
         **look_changes: Single settings of the look, e.g. ``shadows=False``, ``ambient=0.6``
             or ``bands=4`` (see :class:`Look`).
 
@@ -300,7 +304,8 @@ def render(
     """
     camera = Camera(elev, azim, vertical_axis)
     look = _resolve_look(look, look_changes)
-    return RaytracedImage(_draw(scene, camera, None, width, margin, samples, background, look))
+    engine = _resolve_engine(engine)
+    return RaytracedImage(_draw(scene, camera, None, width, margin, samples, background, look, engine))
 
 
 def animate(
@@ -318,6 +323,7 @@ def animate(
     samples: int = 2,
     background: str | None = None,
     look: str | Look = "natural",
+    engine: str = "auto",
     **look_changes,
 ) -> RaytracedAnimation:
     """
@@ -335,7 +341,7 @@ def animate(
         frames: The number of frames, including the first one.
         interval: Time between frames, in milliseconds.
         repeat: Whether the animation plays in a loop.
-        width, elev, azim, vertical_axis, margin, samples, background, look: As for
+        width, elev, azim, vertical_axis, margin, samples, background, look, engine: As for
             :func:`render`; further keywords change single settings of the look, as there.
 
     Example:
@@ -347,15 +353,32 @@ def animate(
         raise ValueError("An animation needs at least one frame.")
     camera = Camera(elev, azim, vertical_axis)
     look = _resolve_look(look, look_changes)
+    engine = _resolve_engine(engine)
     states = [copy.deepcopy(scene)]
     for i in range(1, frames):
         update(i)
         states.append(copy.deepcopy(scene))
     everywhere = np.vstack([_Contents.collect(state).points(camera) for state in states])
     pictures = [
-        _draw(state, camera, everywhere, width, margin, samples, background, look) for state in states
+        _draw(state, camera, everywhere, width, margin, samples, background, look, engine) for state in states
     ]
     return RaytracedAnimation(pictures, interval, repeat)
+
+
+ENGINES = ("auto", "numpy", "numba")
+
+
+def _resolve_engine(engine: str) -> str:
+    """``"numba"`` or ``"numpy"``: numba for ``"auto"`` if it is installed."""
+    from . import _fastcast
+
+    if engine not in ENGINES:
+        raise ValueError(f"Unknown engine {engine!r}; use one of {', '.join(ENGINES)}.")
+    if engine == "auto":
+        return "numba" if _fastcast.available() else "numpy"
+    if engine == "numba" and not _fastcast.available():
+        raise ImportError('The numba engine needs numba: pip install "minigeo[fast]"')
+    return engine
 
 
 def _resolve_look(look: str | Look, changes: dict) -> Look:
@@ -367,7 +390,15 @@ def _resolve_look(look: str | Look, changes: dict) -> Look:
 
 
 def _draw(
-    scene, camera: Camera, fit: np.ndarray | None, width, margin, samples, background, look: Look
+    scene,
+    camera: Camera,
+    fit: np.ndarray | None,
+    width,
+    margin,
+    samples,
+    background,
+    look: Look,
+    engine="numpy",
 ) -> np.ndarray:
     """Trace one picture. ``fit`` are the points the view is fitted to; None: the scene's own."""
     if samples < 1:
@@ -375,7 +406,7 @@ def _draw(
     contents = _Contents.collect(scene)
     points = contents.points(camera) if fit is None else fit
     view = _View.fitting(points, camera, width, margin * width / REFERENCE_WIDTH, samples)
-    surfaces = _Surfaces(contents.surfaces, view.size)
+    surfaces = _Surfaces(contents.surfaces, view.size, engine)
     if look.palette is not None:
         surfaces.colors = _nearest_colors(surfaces.colors, look.palette)
     lighting = _Lighting(surfaces, camera.light, look, view.size)
@@ -420,8 +451,15 @@ class _Surface:
     piece: int = -1  # which geometry it belongs to (members of a group are different pieces)
     points: np.ndarray | None = None  # face corners
     style: Style | None = None  # face style
-    to_world: np.ndarray | None = None  # sphere/cylinder: unit shape -> world (4 x 4)
-    part_styles: tuple[Style, ...] = ()  # cylinder: side, bottom, top
+    exact: ExactShape | None = None  # sphere/cylinder, see minigeo.exact
+
+    @property
+    def to_world(self) -> np.ndarray | None:
+        return None if self.exact is None else self.exact.to_world
+
+    @property
+    def part_styles(self) -> tuple[Style, ...]:
+        return () if self.exact is None else self.exact.styles
 
 
 @dataclass
@@ -469,13 +507,11 @@ class _Contents:
 
     def _add(self, geometry, primitives: list[Primitive], owner: int, outlines: set) -> None:
         self._piece_count += 1
-        exact = _exact_surface(geometry, primitives, owner)
+        exact = exact_shape(geometry, primitives)
         if exact is not None:
-            exact.piece = self._piece_count
-            self.surfaces.append(exact)
-            ring_style = exact.part_styles[0]
+            self.surfaces.append(_Surface(exact.kind, owner, self._piece_count, exact=exact))
             for z in (-0.5, 0.5) if exact.kind == "cylinder" else ():
-                self.lines.append(_Line(_circle(exact.to_world, z), ring_style, False))
+                self.lines.append(_Line(exact.rim(z, CIRCLE_POINTS), exact.styles[0], False))
             return
         for primitive in primitives:
             if isinstance(primitive, Face):
@@ -508,7 +544,7 @@ class _Contents:
     def points(self, camera: Camera) -> np.ndarray:
         """All points that should fit into the picture, seen with ``camera``."""
         points = [s.points for s in self.surfaces if s.points is not None] + self.extra_points
-        points += [_outline_points(s, camera) for s in self.surfaces if s.to_world is not None]
+        points += [_outline_points(s.exact, camera) for s in self.surfaces if s.exact is not None]
         points += [line.points for line in self.lines]
         points += [m.position[np.newaxis] for m in self.markers]
         points += [entry.label.position[np.newaxis] for entry in self.labels]
@@ -540,65 +576,16 @@ def _owners_of(target, owners: dict[int, int]) -> set[int]:
     return set()
 
 
-def _exact_surface(geometry, primitives: list[Primitive], owner: int) -> _Surface | None:
-    """An exact sphere or cylinder for the geometry, or None to use its faces instead."""
-    if isinstance(geometry, Sphere):
-        kind, unit = "sphere", Sphere([0, 0, 0], 1, segments=geometry.segments)
-    elif isinstance(geometry, Cylinder) and not isinstance(geometry, Cone):
-        kind, unit = "cylinder", Cylinder([0, 0, 0], 1, 1, segments=geometry.segments)
-    else:
-        return None
-    faces = [p for p in primitives if isinstance(p, Face)]
-    if len(faces) != len(primitives) or len(unit.local_vertices) != len(geometry.local_vertices):
-        return None
-    if kind == "sphere":
-        styles = {face.style for face in faces}
-        if len(styles) != 1:
-            return None
-        part_styles = (faces[0].style,)
-    else:
-        sides = len(geometry.side_face_indices)
-        if len({face.style for face in faces[:sides]}) != 1:
-            return None  # differently styled side faces: draw the faces themselves
-        part_styles = (faces[0].style, faces[sides].style, faces[sides + 1].style)
-    if any(style.fill == "none" for style in part_styles):
-        return None
-
-    # Every transform is affine, so the shape is an affine image of the unit shape.
-    unit_vertices = np.column_stack([unit.local_vertices, np.ones(len(unit.local_vertices))])
-    solution, *_ = np.linalg.lstsq(unit_vertices, geometry.local_vertices, rcond=None)
-    if not np.allclose(unit_vertices @ solution, geometry.local_vertices, atol=1e-9):
-        return None
-    to_local = np.eye(4)
-    to_local[:3, :3] = solution[:3].T
-    to_local[:3, 3] = solution[3]
-    to_world = geometry.pose.matrix @ to_local
-    if abs(np.linalg.det(to_world[:3, :3])) < 1e-15:
-        return None  # flattened completely
-    return _Surface(kind, owner, to_world=to_world, part_styles=part_styles)
-
-
-def _outline_points(surface: _Surface, camera: Camera) -> np.ndarray:
+def _outline_points(exact: ExactShape, camera: Camera) -> np.ndarray:
     """
     Points at the exact outline of a sphere or cylinder: its farthest points to the right,
     left, top, bottom, front and back of the screen.
     """
-    linear, center = surface.to_world[:3, :3], surface.to_world[:3, 3]
     points = []
     for direction in (camera.right, camera.up, camera.toward_viewer):
-        unit = linear.T @ direction  # the direction, seen from the unit shape
-        if surface.kind == "sphere":
-            reach = np.linalg.norm(unit)
-        else:  # radius 1 around z', height 1 along it
-            reach = np.linalg.norm(unit[:2]) + 0.5 * abs(unit[2])
-        points += [center + reach * direction, center - reach * direction]
+        reach = exact.reach(direction)
+        points += [exact.center + reach * direction, exact.center - reach * direction]
     return np.array(points)
-
-
-def _circle(to_world: np.ndarray, z: float) -> np.ndarray:
-    angles = np.linspace(0, 2 * np.pi, CIRCLE_POINTS + 1)
-    unit = np.column_stack([np.cos(angles), np.sin(angles), np.full(len(angles), z), np.ones(len(angles))])
-    return (unit @ to_world.T)[:, :3]
 
 
 def _rgb(color: str) -> np.ndarray:
@@ -705,8 +692,10 @@ class _Surfaces:
     the outline's bounding box need to be tested, and sorting the rays makes them easy to find.
     """
 
-    def __init__(self, surfaces: list[_Surface], size: float):
+    def __init__(self, surfaces: list[_Surface], size: float, engine: str = "numpy"):
         self.surfaces = surfaces
+        self.engine = engine
+        self._accelerator = None
         triangles, owners = [], []
         for index, surface in enumerate(surfaces):
             if surface.kind == "face":
@@ -743,6 +732,8 @@ class _Surfaces:
         hits = _Hits(np.full(count, np.inf), np.full(count, -1), np.zeros(count, dtype=int))
         if count == 0 or not self.surfaces:
             return hits
+        if self.engine == "numba":
+            return self._cast_compiled(origins, direction, start)
         across, up = _basis(direction)
         ray_u, ray_v, ray_w = origins @ across, origins @ up, origins @ direction
         order = np.argsort(ray_u, kind="stable")
@@ -783,8 +774,8 @@ class _Surfaces:
 
         for index in self.exact:
             surface = self.surfaces[index]
-            corners = _unit_box(surface.kind) @ surface.to_world.T
-            rays = candidates(corners[:, :3] @ across, corners[:, :3] @ up)
+            corners = surface.exact.box_corners()
+            rays = candidates(corners @ across, corners @ up)
             if rays.size == 0:
                 continue
             inverse = self.from_world[index]
@@ -798,6 +789,29 @@ class _Surfaces:
             hits.surface[rays] = index
             hits.part[rays] = part[better]
         return hits
+
+    def _cast_compiled(self, origins, direction, start) -> _Hits:
+        """The same as :meth:`cast`, walking a bounding volume hierarchy in compiled code (numba)."""
+        if self._accelerator is None:
+            from . import _fastcast
+
+            exact = [self.surfaces[i].exact for i in self.exact]
+            self._accelerator = _fastcast.Accelerator(
+                self.triangles,
+                [shape.kind for shape in exact],
+                [self.from_world[i] for i in self.exact],
+                [shape.box_corners() for shape in exact],
+            )
+        distance, primitive, part = self._accelerator.cast(origins, direction, start)
+        triangles = len(self.triangles)
+        found = primitive >= 0
+        is_triangle = found & (primitive < triangles)
+        is_exact = found & ~is_triangle
+        surface = np.full(len(origins), -1)
+        surface[is_triangle] = self.triangle_surface[primitive[is_triangle]]
+        surface[is_exact] = np.asarray(self.exact, dtype=int)[primitive[is_exact] - triangles]
+        part = np.where(is_triangle, primitive, part)  # triangles: their index, as in cast
+        return _Hits(distance, surface, part)
 
     def normals(self, hits: _Hits, points: np.ndarray) -> np.ndarray:
         """Unit normals at the hit points (pointing out of solids)."""
@@ -827,13 +841,6 @@ class _Surfaces:
         is_exact = np.zeros(len(self.surfaces), dtype=bool)
         is_exact[self.exact] = True
         return np.where(is_exact[hits.surface], hits.part, 0)
-
-
-def _unit_box(kind: str) -> np.ndarray:
-    """The corners of the box around the unit sphere or cylinder, as homogeneous points."""
-    height = 1.0 if kind == "sphere" else 0.5
-    corners = np.array([[x, y, z, 1.0] for x in (-1, 1) for y in (-1, 1) for z in (-height, height)])
-    return corners
 
 
 def _hit_sphere(origins, direction, start):

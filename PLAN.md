@@ -48,8 +48,9 @@ scene.py    items + styles + labels + frames -> primitives; render/save/animate
 render.py   the four primitives, geometry -> primitives
 camera.py, depth.py   shared camera; painter's order for 2D backends
 flat.py     the shared 2D steps: hide, project, sort, shade (SVG, TikZ)
+exact.py    exact spheres and cylinders as images of unit shapes (ray tracer, Mitsuba)
 measure.py  pickable anchors and measurements, for interactive backends
-backends/   svg, tikz, matplotlib, plotly, raytrace
+backends/   svg, tikz, matplotlib, plotly, raytrace (+ _fastcast: optional numba engine)
 ```
 
 ## Roadmap
@@ -68,8 +69,10 @@ Suggested order for the next steps, with what each one needs first:
 | 7 | pick points and anchors, measure distances | done (matplotlib) | `measure.py` holds the backend-free part (pickable anchors, `Measurement`); `scene.measure()` uses matplotlib mouse events (ipympl or desktop). Next: plotly, via `FigureWidget` click events or a small JavaScript handler. |
 | 4 | Mitsuba 3 backend | exact-shape hook, perspective camera | Export the scene as a Mitsuba dict (spheres, cylinders and meshes; materials from styles). Heavy optional dependency; best kept as a separate extra and documented as experimental. |
 
-Shared groundwork still open: the exact-shape hook (generalise `raytrace._exact_surface`, for
-4), a perspective option for `Camera` (for 4 and ray tracing phase 2).
+Shared groundwork: the exact-shape hook is done (`exact.py`, used by the ray tracer and meant
+for Mitsuba); the optional numba engine (`backends/_fastcast.py`, extra `fast`) casts rays in
+any direction. Still open: a perspective option for `Camera` (for 4 and ray tracing phase 2),
+which the numba engine now makes easy.
 
 ## Backlog
 

@@ -36,3 +36,8 @@ Version 0.5.5
 - Picking points on geometry objects
 - Animation support for scenes
 
+Version 0.6.0
+==============
+
+- Numba support for faster ray tracing
+

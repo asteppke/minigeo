@@ -132,6 +132,9 @@ backends that paint from back to front.
 .. automodule:: minigeo.flat
    :members: flatten, FlatPicture, Placed
 
+.. automodule:: minigeo.exact
+   :members: exact_shape, ExactShape
+
 .. autofunction:: minigeo.colors.to_rgb
 
 .. automodule:: minigeo.depth

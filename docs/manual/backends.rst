@@ -82,6 +82,13 @@ hidden where something lies in front of them. The result is an image;
 The sphere on the right has only six segments, which the other backends draw as a coarse
 polyhedron; the ray tracer still makes it round.
 
+The ray tracer is written in numpy. With the optional ``fast`` extra installed
+(``pip install "minigeo[ray,fast]"``), it casts its rays with compiled code from numba, in
+parallel on all processor cores: several times faster, with the same pictures. It does so
+automatically whenever numba is installed; ``engine="numpy"`` or ``engine="numba"`` chooses
+explicitly. The first render on a computer takes a few seconds longer, while numba compiles
+and stores the code.
+
 The ray tracer can also draw in other *looks*, for diagrams rather than photos; see
 :doc:`looks`.
 
