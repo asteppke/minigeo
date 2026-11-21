@@ -5,12 +5,17 @@ Every face becomes its own artist. They are drawn in the order of
 :func:`minigeo.depth.painter_order`, which is recomputed whenever the view is rotated
 with the mouse. Back faces of opaque solids are hidden.
 
+:func:`measure` adds picking: with an interactive backend (``%matplotlib widget`` from
+ipympl in Jupyter, or a desktop window), the mouse snaps to the nearest anchor, and two clicks
+measure the distance between anchors.
+
 Requires ``pip install "minigeo[mpl]"``.
 """
 
 from __future__ import annotations
 
 import io
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -22,6 +27,7 @@ from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
 from ..camera import Camera
 from ..depth import is_back_face, painter_order
+from ..measure import Measurement, Spot, pickable_points
 from ..render import Face, Label, Marker, Path, Primitive, bounds
 from ..style import color_value
 
@@ -57,6 +63,200 @@ def render(
     sorter.sort()
     sorter.connect()
     return ax
+
+
+def measure(
+    scene,
+    ax=None,
+    *,
+    show_axes: bool = True,
+    elev: float | None = None,
+    azim: float | None = None,
+    vertical_axis: str = "z",
+    digits: int = 3,
+    radius: float = 10,
+) -> Measurer:
+    """
+    Draw ``scene`` and let the user pick anchors with the mouse and measure between them.
+
+    Needs an interactive backend: ``%matplotlib widget`` (ipympl) in Jupyter, or a desktop
+    window. Moving the mouse highlights the nearest anchor and shows its name and
+    coordinates; a click picks it. The first pick (A) shows its coordinates, the second (B)
+    the distance and the difference along x, y and z; a third pick starts again. Dragging
+    still turns the view.
+
+    Args:
+        scene, ax, show_axes, elev, azim, vertical_axis: As for :func:`render`.
+        digits: Decimals of the coordinates and distances shown.
+        radius: How close (in pixels) the mouse must come to an anchor to snap to it.
+
+    Example:
+        >>> %matplotlib widget
+        >>> tool = scene.measure()
+        >>> tool.measurement.distance   # after two clicks
+    """
+    if _inline_backend():
+        warnings.warn(
+            "Picking needs an interactive matplotlib backend, e.g. %matplotlib widget (ipympl); "
+            "the inline backend shows a still picture.",
+            stacklevel=3,
+        )
+    ax = render(scene, ax, show_axes=show_axes, elev=elev, azim=azim, vertical_axis=vertical_axis)
+    return Measurer(ax, pickable_points(scene), digits=digits, radius=radius)
+
+
+class Measurer:
+    """
+    Picks anchors in a matplotlib 3D axes and measures between them (made by :func:`measure`).
+
+    Picks can also be made from code with :meth:`pick`, e.g. to prepare a figure.
+
+    Attributes:
+        ax: The 3D axes.
+        spots: The anchors that can be picked (see :func:`minigeo.measure.pickable_points`).
+        measurement: The current picks and what follows from them
+            (:class:`minigeo.measure.Measurement`).
+    """
+
+    #: Drawn above everything else of the scene.
+    ON_TOP = 10**7
+
+    def __init__(self, ax, spots: list[Spot], *, digits: int = 3, radius: float = 10):
+        self.ax = ax
+        self.spots = spots
+        self.measurement = Measurement(digits)
+        self.radius = radius
+        self._positions = np.array([spot.position for spot in spots]).reshape(-1, 3)
+        self._hovered: Spot | None = None
+        self._press: tuple[float, float] | None = None
+        self._pick_artists: list = []
+        self._hover_artists: list = []
+        if spots:
+            self.dots = ax.scatter(
+                *self._positions.T, s=10, c="black", alpha=0.3, depthshade=False, zorder=self.ON_TOP
+            )
+        box = {"boxstyle": "round", "facecolor": "white", "edgecolor": "0.8", "alpha": 0.85}
+        text = {
+            "transform": ax.transAxes,
+            "ha": "left",
+            "family": "monospace",
+            "fontsize": 8,
+            "zorder": self.ON_TOP + 2,
+            "bbox": box,
+        }
+        self.info = ax.text2D(0.01, 0.99, self.measurement.text(), va="top", **text)
+        self.hover_info = ax.text2D(0.01, 0.01, "", va="bottom", **text)
+        self.hover_info.set_visible(False)
+        canvas = ax.figure.canvas
+        canvas.mpl_connect("button_press_event", self._on_press)
+        canvas.mpl_connect("button_release_event", self._on_release)
+        canvas.mpl_connect("motion_notify_event", self._on_motion)
+
+    @property
+    def figure(self):
+        return self.ax.figure
+
+    def pick(self, spot: Spot | str) -> Spot:
+        """
+        Pick a spot, or the spot with this name (e.g. ``"cube: top front left"``), as a click would.
+        """
+        if isinstance(spot, str):
+            matches = [s for s in self.spots if s.name == spot]
+            if not matches:
+                similar = [s.name for s in self.spots if spot.split(":")[0] in s.name][:6]
+                raise KeyError(f"No anchor named {spot!r}; for example: {', '.join(similar) or 'none'}.")
+            spot = matches[0]
+        self.measurement.pick(spot)
+        self._show_picks()
+        return spot
+
+    def clear(self) -> None:
+        """Forget the picks."""
+        self.measurement.clear()
+        self._show_picks()
+
+    def spot_at(self, x: float, y: float) -> Spot | None:
+        """The anchor nearest to a position on the screen (in pixels), if within ``radius``."""
+        if not self.spots:
+            return None
+        distances = np.linalg.norm(self._on_screen(self._positions) - [x, y], axis=1)
+        nearest = int(np.argmin(distances))
+        return self.spots[nearest] if distances[nearest] <= self.radius else None
+
+    # ------------------------------------------------------------ mouse
+
+    def _on_press(self, event) -> None:
+        if event.inaxes is self.ax and event.button == 1:
+            self._press = (event.x, event.y)
+
+    def _on_release(self, event) -> None:
+        press, self._press = self._press, None
+        if press is None or event.button != 1 or np.hypot(event.x - press[0], event.y - press[1]) > 3:
+            return  # not a click: the view was turned
+        spot = self.spot_at(event.x, event.y)
+        if spot is not None:
+            self.pick(spot)
+
+    def _on_motion(self, event) -> None:
+        if self._press is not None:
+            return  # turning the view
+        spot = self.spot_at(event.x, event.y) if event.inaxes is self.ax else None
+        if spot is not self._hovered:
+            self._hovered = spot
+            self._show_hover()
+
+    # ------------------------------------------------------------ drawing
+
+    def _on_screen(self, points: np.ndarray) -> np.ndarray:
+        """Pixel positions of 3D points for the axes' current view."""
+        xs, ys, _ = proj3d.proj_transform(points[:, 0], points[:, 1], points[:, 2], self.ax.get_proj())
+        return self.ax.transData.transform(np.column_stack([xs, ys]))
+
+    def _show_picks(self) -> None:
+        for artist in self._pick_artists:
+            artist.remove()
+        self._pick_artists = []
+        picks = self.measurement.picks
+        if picks:
+            points = np.array([spot.position for spot in picks])
+            ax = self.ax
+            self._pick_artists.append(
+                ax.scatter(*points.T, s=45, c="red", depthshade=False, zorder=self.ON_TOP + 1)
+            )
+            for label, point in zip("AB", points, strict=False):
+                self._pick_artists.append(
+                    ax.text(*point, f" {label}", color="red", fontsize=10, zorder=self.ON_TOP + 1)
+                )
+            if len(picks) == 2:
+                (line,) = ax.plot(*points.T, color="red", linewidth=1.5, zorder=self.ON_TOP + 1)
+                self._pick_artists.append(line)
+        self.info.set_text(self.measurement.text())
+        self.figure.canvas.draw_idle()
+
+    def _show_hover(self) -> None:
+        for artist in self._hover_artists:
+            artist.remove()
+        self._hover_artists = []
+        spot = self._hovered
+        if spot is not None:
+            ring = self.ax.scatter(
+                *spot.position,
+                s=120,
+                facecolors="none",
+                edgecolors="red",
+                linewidths=1.5,
+                depthshade=False,
+                zorder=self.ON_TOP + 1,
+            )
+            self._hover_artists.append(ring)
+            x, y, z = spot.position
+            digits = self.measurement.digits
+            self.hover_info.set_text(f"{spot.name}  ({x:.{digits}f}, {y:.{digits}f}, {z:.{digits}f})")
+        self.hover_info.set_visible(spot is not None)
+        self.figure.canvas.draw_idle()
+
+    def __repr__(self) -> str:
+        return f"Measurer with {len(self.spots)} anchors; {self.measurement.text().splitlines()[0]}"
 
 
 def animate(

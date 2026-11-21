@@ -102,3 +102,43 @@ measured points; ``unit`` and ``digits`` format the text.
                       offset=[0.4, 0, 0], unit=" m")
    scene.add(width)
    scene.add(height)
+
+Picking with the mouse
+======================
+
+``scene.measure()`` draws the scene with matplotlib for measuring with the mouse. It needs an
+interactive backend: ``%matplotlib widget`` in Jupyter (from the ``ipympl`` package), or a
+desktop window. Every anchor that lies on a shape is shown as a small dot, as are the ends
+and middles of lines:
+
+* moving the mouse highlights the nearest anchor and shows its name and coordinates,
+* the first click picks it as point A,
+* the second click picks point B and shows the distance and the difference along x, y, z,
+* a third click starts a new measurement. Dragging still turns the view.
+
+Picks can also be made from code, by name, which is how the picture here was made:
+
+.. minigeo-example::
+   :width: 380
+
+   scene = Scene()
+   cube = Box([0, 0, 0], size=1)
+   scene.add(cube, fill="C0", label="cube")
+   can = Cylinder([2, 0, -0.5], radius=0.4, height=1)
+   scene.add(can, fill="C1")
+
+   tool = scene.measure(show_axes=False)
+   tool.pick("cube: top front right")
+   tool.pick("Cylinder 1: top")
+   print(f"{tool.measurement.distance:.3f}")
+   figure = tool.figure
+
+Geometries are named by their label, or by their kind and number (``"Cylinder 1"``). After
+measuring, ``tool.measurement`` holds the picks, ``distance`` and ``difference``, for use in
+further calculations.
+
+.. code-block:: python
+
+   %matplotlib widget
+   tool = scene.measure()
+

@@ -48,13 +48,15 @@ scene.py    items + styles + labels + frames -> primitives; render/save/animate
 render.py   the four primitives, geometry -> primitives
 camera.py, depth.py   shared camera; painter's order for 2D backends
 flat.py     the shared 2D steps: hide, project, sort, shade (SVG, TikZ)
+measure.py  pickable anchors and measurements, for interactive backends
 backends/   svg, tikz, matplotlib, plotly, raytrace
 ```
 
 ## Roadmap
 
 Done: 1. foundations test suite (from galgebra's identities); 2. this plan; 6. the concept
-manual (`docs/manual`, first version); 3. TikZ backend; 5. looks for the ray tracer.
+manual (`docs/manual`, first version); 3. TikZ backend; 5. looks for the ray tracer;
+7. picking and measuring (matplotlib).
 
 Suggested order for the next steps, with what each one needs first:
 
@@ -63,7 +65,7 @@ Suggested order for the next steps, with what each one needs first:
 | 6 | concept manual, code next to output (like the PGF manual) | done | `minigeo-example` blocks in `docs/manual/*.rst` run at build time (`docs/_ext/minigeo_manual.py`) and in `tests/test_manual.py`. Next: a chapter per new feature, and golden-image checks if pictures should be guarded too. |
 | 3 | TikZ backend | done | `flat.py` holds the shared 2D steps; `backends/tikz.py` writes plain 2D paths, xcolor mixes for shading, `arrows.meta` tips, LaTeX labels. Next: cel-style shading for SVG/TikZ too. |
 | 5 | stylised rendering: cel shading, few colors, ambient occlusion, outlines | done | `Look` and `LOOKS` in the ray tracer. Occlusion uses fixed direction sets (parallel rays), interleaved per pixel and smoothed per surface. |
-| 7 | pick points and anchors, measure distances | nothing | Start with plotly (`FigureWidget` click events) in Jupyter; snap clicks to vertices and anchors; show a `Dimension` live. Keep the measuring logic backend-free, so matplotlib pick events can reuse it. |
+| 7 | pick points and anchors, measure distances | done (matplotlib) | `measure.py` holds the backend-free part (pickable anchors, `Measurement`); `scene.measure()` uses matplotlib mouse events (ipympl or desktop). Next: plotly, via `FigureWidget` click events or a small JavaScript handler. |
 | 4 | Mitsuba 3 backend | exact-shape hook, perspective camera | Export the scene as a Mitsuba dict (spheres, cylinders and meshes; materials from styles). Heavy optional dependency; best kept as a separate extra and documented as experimental. |
 
 Shared groundwork still open: the exact-shape hook (generalise `raytrace._exact_surface`, for

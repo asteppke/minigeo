@@ -12,7 +12,8 @@ In a page of the manual::
 The code runs while the documentation is built, after ``import numpy as np`` and
 ``from minigeo import *``. Each example runs on its own. If it defines ``scene``, the scene is
 drawn next to the code; if it defines ``animation`` (from ``scene.animate(..., backend=
-"raytrace")``), the animation is shown instead, as an animated PNG. Whatever the example
+"raytrace")``), the animation is shown instead, as an animated PNG; if it defines ``figure``
+(a matplotlib figure, e.g. ``scene.measure().figure``), that figure. Whatever the example
 prints is shown below the picture. An example that fails
 stops the build (``sphinx-build -W``), and ``tests/test_manual.py`` runs every example with
 pytest, using :func:`examples_in` and :func:`run_example` from this module.
@@ -68,6 +69,7 @@ class Result:
     scene: object | None
     printed: str
     animation: object | None = None
+    figure: object | None = None
 
 
 def run_example(code: str) -> Result:
@@ -77,9 +79,11 @@ def run_example(code: str) -> Result:
     printed = io.StringIO()
     with contextlib.redirect_stdout(printed):
         exec(compile(code, "<minigeo example>", "exec"), namespace)
-    result = Result(namespace.get("scene"), printed.getvalue(), namespace.get("animation"))
-    if result.scene is None and result.animation is None and not result.printed:
-        raise ValueError("A manual example must define `scene` or `animation`, or print something.")
+    result = Result(
+        namespace.get("scene"), printed.getvalue(), namespace.get("animation"), namespace.get("figure")
+    )
+    if result.scene is None and result.animation is None and result.figure is None and not result.printed:
+        raise ValueError("A manual example must define `scene`, `animation` or `figure`, or print something.")
     return result
 
 
@@ -111,9 +115,11 @@ def output_html(result: Result, options: dict, store: Callable[[bytes], str] | N
     """
     parts = []
     column = ""
-    if result.scene is not None or result.animation is not None:
+    if result.scene is not None or result.animation is not None or result.figure is not None:
         if result.animation is not None:
             mime, data = "image/png", result.animation.to_png()  # browsers play animated PNGs
+        elif result.figure is not None:
+            mime, data = "image/png", _figure_png(result.figure)
         else:
             mime, data = picture(result.scene, options)
         width = int(options.get("width", DEFAULT_WIDTH))
@@ -126,6 +132,16 @@ def output_html(result: Result, options: dict, store: Callable[[bytes], str] | N
     if result.printed:
         parts.append(f'<pre class="minigeo-printed">{html.escape(result.printed.rstrip())}</pre>')
     return f'<div class="minigeo-output"{column}>' + "".join(parts) + "</div>"
+
+
+def _figure_png(figure) -> bytes:
+    """A matplotlib figure as PNG, closed afterwards so that figures do not pile up."""
+    buffer = io.BytesIO()
+    figure.savefig(buffer, format="png", dpi=100, bbox_inches="tight")
+    import matplotlib.pyplot as plt
+
+    plt.close(figure)
+    return buffer.getvalue()
 
 
 def render_note(options: dict) -> str:

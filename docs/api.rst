@@ -13,7 +13,7 @@ Scenes and styles
 A :class:`Scene` collects geometries with their :class:`Style` and draws them with a backend.
 
 .. autoclass:: Scene
-   :members: add, label, add_frame, render, save, animate, snapshots, primitives, bounds
+   :members: add, label, add_frame, render, save, animate, measure, snapshots, primitives, bounds
 
 .. autoclass:: Style
    :members: with_, is_complete
@@ -57,6 +57,12 @@ Planes, angles and dimensions
    :members: between, degrees, radians, is_right, anchor
 .. autoclass:: Dimension
    :members: length, text, anchor
+
+Picking and measuring
+=====================
+
+.. automodule:: minigeo.measure
+   :members: pickable_points, nearest, Spot, Measurement
 
 Groups
 ======
@@ -103,7 +109,7 @@ Usually used through :meth:`Scene.render`, :meth:`Scene.save` and :meth:`Scene.a
    :members: render, SvgDrawing
 
 .. automodule:: minigeo.backends.matplotlib
-   :members: render, animate, to_figure, to_png, MatplotlibAnimation
+   :members: render, animate, measure, Measurer, to_figure, to_png, MatplotlibAnimation
 
 .. automodule:: minigeo.backends.plotly
    :members: render, animate

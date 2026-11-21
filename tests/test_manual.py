@@ -35,14 +35,14 @@ def test_example_runs_and_draws(example):
     result = minigeo_manual.run_example(example.code)
     html = minigeo_manual.output_html(result, example.options)
     assert html.startswith('<div class="minigeo-output"')
-    if result.scene is not None or result.animation is not None:
+    if result.scene is not None or result.animation is not None or result.figure is not None:
         assert "<img" in html
 
 
 def test_failing_examples_are_reported():
     with pytest.raises(ZeroDivisionError):
         minigeo_manual.run_example("1 / 0")
-    with pytest.raises(ValueError, match="animation"):
+    with pytest.raises(ValueError, match="figure"):
         minigeo_manual.run_example("x = 1")
 
 

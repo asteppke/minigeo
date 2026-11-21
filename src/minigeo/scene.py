@@ -360,6 +360,31 @@ class Scene:
             return module.animate(self, update, frames, **options)
         return module.animate(self.snapshots(update, frames), **options)
 
+    def measure(self, backend: str = "matplotlib", **options):
+        """
+        Draw the scene for picking anchors with the mouse and measuring between them.
+
+        With an interactive backend (``%matplotlib widget`` in Jupyter, from ipympl), the mouse
+        snaps to the nearest anchor and shows its name and coordinates. The first click picks
+        point A, the second point B and shows the distance and the difference along x, y, z.
+
+        Args:
+            backend: ``"matplotlib"``.
+            **options: Passed on, e.g. the view options or ``digits=2``
+                (see :func:`minigeo.backends.matplotlib.measure`).
+
+        Returns:
+            A :class:`~minigeo.backends.matplotlib.Measurer`; its ``measurement`` holds the picks.
+
+        Example:
+            >>> %matplotlib widget
+            >>> tool = scene.measure()
+            >>> tool.measurement.distance   # after two clicks
+        """
+        if backend != "matplotlib":
+            raise ValueError(f"Measuring works with the matplotlib backend, not {backend!r}.")
+        return self._backend(backend).measure(self, **options)
+
     def _backend(self, backend: str):
         if backend not in BACKENDS:
             raise ValueError(f"Unknown backend {backend!r}; available: {', '.join(BACKENDS)}.")
