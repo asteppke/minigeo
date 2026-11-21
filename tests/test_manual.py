@@ -81,3 +81,17 @@ def test_picture_column_has_the_picture_width():
     assert '<div class="minigeo-output" style="width: 180px">' in minigeo_manual.output_html(
         result, {"width": 180}
     )
+
+
+def test_animations_can_be_stored_as_files():
+    code = (
+        "scene = Scene()\nbox = scene.add(Box([0, 0, 0], size=1))\n"
+        "animation = scene.animate(lambda i: box.rotate('z', 30), frames=2, backend='raytrace', width=40)"
+    )
+    pytest.importorskip("PIL")
+    result = minigeo_manual.run_example(code)
+    stored = []
+    html = minigeo_manual.output_html(result, {}, store=lambda data: stored.append(data) or "_images/x.png")
+    assert '<img src="_images/x.png"' in html
+    assert stored and stored[0].startswith(b"\x89PNG") and b"acTL" in stored[0]
+    assert "data:image/png" in minigeo_manual.output_html(result, {})  # without a store: in the page

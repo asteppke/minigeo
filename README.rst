@@ -1,9 +1,9 @@
 .. image:: https://github.com/asteppke/minigeo/actions/workflows/python-app.yml/badge.svg
    :alt: pytest
    :target: https://github.com/asteppke/minigeo/actions/workflows/python-app.yml
-.. image:: https://readthedocs.org/projects/minigeo/badge/?version=latest
+.. image:: https://app.readthedocs.org/projects/minigeo/badge/?version=latest
+   :target: https://minigeo.readthedocs.io/en/latest/
    :alt: Documentation Status
-   :target: https://minigeo.readthedocs.io/en/latest/readme.html
 .. image:: https://mybinder.org/badge_logo.svg
    :alt: Try it on Binder
    :target: https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2Fgetting_started.ipynb
@@ -186,6 +186,10 @@ an animated PNG, in any look, which plays wherever images are shown:
                          backend="raytrace", look="diagram")
    movie.save("turning.png")                  # or .gif, .webp
 
+.. image:: https://raw.githubusercontent.com/asteppke/minigeo/main/examples/turning.png
+   :alt: A box turning on a plate, an animated PNG from the ray tracer
+   :width: 300px
+
 Ray tracing
 -----------
 ``scene.render("raytrace")`` traces rays through every pixel: faces are lit by a light from the
@@ -271,7 +275,7 @@ with everything installed (it takes a minute), Colab installs minigeo in the fir
      - `launch <https://mybinder.org/v2/gh/asteppke/minigeo/HEAD?labpath=examples%2FCristallina.ipynb>`__
      - `open <https://colab.research.google.com/github/asteppke/minigeo/blob/main/examples/Cristallina.ipynb>`__
 
-``examples/readme_image.py`` draws the picture above; ``examples/table_scene.py`` builds a
+``examples/readme_image.py`` draws the pictures of this page; ``examples/table_scene.py`` builds a
 room scene entirely with anchors;
 ``examples/xyz_stage.py`` builds and animates the XYZ stage.
 

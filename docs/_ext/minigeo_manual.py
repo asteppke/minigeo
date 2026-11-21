@@ -32,11 +32,12 @@ from __future__ import annotations
 import ast
 import base64
 import contextlib
+import hashlib
 import html
 import io
 import re
 import traceback
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -99,8 +100,15 @@ def picture(scene, options: dict) -> tuple[str, bytes]:
     raise ValueError(f"Unknown backend {backend!r}; use one of {', '.join(BACKENDS)}.")
 
 
-def output_html(result: Result, options: dict) -> str:
-    """The picture and the printed text, as HTML."""
+def output_html(result: Result, options: dict, store: Callable[[bytes], str] | None = None) -> str:
+    """
+    The picture and the printed text, as HTML.
+
+    Pictures are written into the page itself, as ``data:`` URLs. Animations are much larger,
+    and a page with such a URL may not show it, so they are handed to ``store``, which saves
+    them as a file and returns its address (without ``store`` they are written into the page
+    too, e.g. in the tests).
+    """
     parts = []
     column = ""
     if result.scene is not None or result.animation is not None:
@@ -110,7 +118,10 @@ def output_html(result: Result, options: dict) -> str:
             mime, data = picture(result.scene, options)
         width = int(options.get("width", DEFAULT_WIDTH))
         column = f' style="width: {width}px"'  # printed text wraps at the picture's width
-        source = f"data:{mime};base64,{base64.b64encode(data).decode()}"
+        if result.animation is not None and store is not None:
+            source = store(data)
+        else:
+            source = f"data:{mime};base64,{base64.b64encode(data).decode()}"
         parts.append(f'<img src="{source}" width="{width}" alt="the picture drawn by the code">')
     if result.printed:
         parts.append(f'<pre class="minigeo-printed">{html.escape(result.printed.rstrip())}</pre>')
@@ -237,7 +248,7 @@ class MinigeoExample(SphinxDirective):
         code = "\n".join(self.content)
         options = parse_options({name: str(value) for name, value in self.options.items()})
         try:
-            output = output_html(run_example(code), options)
+            output = output_html(run_example(code), options, store=self._store)
         except Exception:
             raise self.error(f"This minigeo example failed:\n{traceback.format_exc()}") from None
 
@@ -251,6 +262,14 @@ class MinigeoExample(SphinxDirective):
         example += nodes.raw("", output, format="html")
         example += code_column
         return [example]
+
+    def _store(self, data: bytes) -> str:
+        """Save an animation as ``_images/minigeo-<hash>.png`` in the output; return its address."""
+        name = f"minigeo-{hashlib.sha1(data).hexdigest()[:16]}.png"
+        folder = Path(self.env.app.outdir) / "_images"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_bytes(data)
+        return "../" * self.env.docname.count("/") + f"_images/{name}"
 
 
 def setup(app):
