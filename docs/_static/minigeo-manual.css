@@ -1,0 +1,36 @@
+/* The manual: each example's picture next to its code, as in the PGF manual. */
+.minigeo-example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1.25rem;
+  margin: 1rem 0 1.75rem;
+}
+.minigeo-output {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+.minigeo-output img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: white; /* pictures stay readable in dark mode */
+  border-radius: 4px;
+}
+.minigeo-printed {
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8em;
+  white-space: pre-wrap;
+}
+.minigeo-code {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+.minigeo-code div[class^="highlight"],
+.minigeo-code pre {
+  margin: 0;
+}
+.minigeo-code pre {
+  font-size: 0.75rem; /* about 65 characters next to a 220-pixel picture */
+}

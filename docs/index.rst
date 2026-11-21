@@ -8,6 +8,7 @@ A small Python library for describing and drawing basic 3D geometry, in the spir
    :maxdepth: 2
 
    Overview <readme>
+   manual/index
    api
    Contributing <contributing>
    Changelog <changelog>

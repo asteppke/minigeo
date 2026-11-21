@@ -21,6 +21,9 @@ place boxes, cylinders, lines and axes relative to each other with named anchors
 the scene as an SVG vector image, with matplotlib, or interactively in the browser with plotly.
 It is meant for sketches and for understanding 3D geometry, readable first, fast second.
 
+The `manual <https://minigeo.readthedocs.io/en/latest/manual/index.html>`__ introduces the
+ideas one at a time, with every picture next to the code that draws it.
+
 .. image:: https://raw.githubusercontent.com/asteppke/minigeo/main/examples/minigeo.png
    :alt: A table with a cup, a book and a lamp, drawn as SVG
    :width: 500px

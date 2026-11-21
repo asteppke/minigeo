@@ -28,8 +28,9 @@ rule or change the rule here first, on purpose.
    backend and match matplotlib.
 7. **Core depends on numpy only.** Every backend is an optional extra (`mpl`, `svg`, `plotly`,
    `ray`, ...) and fails with a message naming the extra.
-8. **Every feature arrives with** a docstring example, tests, a notebook cell or section,
-   and an entry in `docs/api.rst`. Geometric facts go into `tests/test_geometry_foundations.py`.
+8. **Every feature arrives with** a docstring example, tests, a manual section with
+   `minigeo-example` blocks (code lines of at most 64 characters), and an entry in
+   `docs/api.rst`. Geometric facts go into `tests/test_geometry_foundations.py`.
 9. **Compatibility.** Renamed API keeps the old name for one minor version with a
    `DeprecationWarning` (module `__getattr__`, warn once).
 10. **Tooling.** Python ≥ 3.12, ruff, pytest, `sphinx-build -W` in CI. Examples must run.
@@ -50,13 +51,14 @@ backends/   svg, matplotlib, plotly, raytrace
 
 ## Roadmap
 
-Done: 1. foundations test suite (from galgebra's identities); 2. this plan.
+Done: 1. foundations test suite (from galgebra's identities); 2. this plan; 6. the concept
+manual (`docs/manual`, first version).
 
 Suggested order for the next steps, with what each one needs first:
 
 | step | what | needs first | notes |
 |---|---|---|---|
-| 6 | concept manual, code next to output (like the PGF manual) | nothing | Sphinx pages built from small example files, each rendered as SVG at build time. Doubles as visual regression tests and catches API awkwardness early. |
+| 6 | concept manual, code next to output (like the PGF manual) | done | `minigeo-example` blocks in `docs/manual/*.rst` run at build time (`docs/_ext/minigeo_manual.py`) and in `tests/test_manual.py`. Next: a chapter per new feature, and golden-image checks if pictures should be guarded too. |
 | 3 | TikZ backend | shared 2D pipeline | Move projection, back-face removal and painter's order out of `backends/svg.py` into a `projection` module; SVG and TikZ become thin writers. Output `tikzpicture` with projected 2D coordinates (exact and robust) rather than `tikz-3dplot`. |
 | 5 | stylised rendering: cel shading, few colors, ambient occlusion, outlines | raytracer buffers | Add options to the ray tracer: quantised Lambert shading, a palette, hemisphere-sampled occlusion, and outlines from jumps in depth, normal and object id. Aim for diagrams that print well in grey. |
 | 7 | pick points and anchors, measure distances | nothing | Start with plotly (`FigureWidget` click events) in Jupyter; snap clicks to vertices and anchors; show a `Dimension` live. Keep the measuring logic backend-free, so matplotlib pick events can reuse it. |

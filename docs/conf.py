@@ -1,6 +1,10 @@
 """Sphinx configuration: the API reference is built from the docstrings (Google style)."""
 
+import sys
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent / "_ext"))  # the manual's example directive
 
 project = "minigeo"
 author = "Alexander Steppke"
@@ -15,6 +19,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",  # Google-style "Args:", "Returns:", "Example:" sections
     "sphinx.ext.viewcode",  # links to the source code
+    "minigeo_manual",  # examples with their picture next to the code
 ]
 
 autodoc_member_order = "bysource"
@@ -28,3 +33,4 @@ napoleon_use_ivar = True  # "Attributes:" sections as field lists, not as separa
 exclude_patterns = ["_build"]
 html_theme = "furo"
 html_title = "minigeo"
+html_static_path = ["_static"]
