@@ -43,4 +43,5 @@ Version 0.6.0
 - OBJ and STL file import support for geometry objects
 - Polylines and curve support for geometry objects
 - Mesh support for geometry objects
+- LaTeX label support from matplotlib for render backends
 
