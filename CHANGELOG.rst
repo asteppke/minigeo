@@ -20,3 +20,13 @@ Version 0.2.0
 - Animation support for geometry objects
 - Improved handling of anchors for geometry placement
 
+Version 0.4.0
+==============
+- Ray tracing support for scenes
+
+Version 0.5.0
+==============
+
+- TikZ backend for rendering scenes as LaTeX ``tikzpicture``
+- Animation support for scenes
+

@@ -186,10 +186,6 @@ an animated PNG, in any look, which plays wherever images are shown:
                          backend="raytrace", look="diagram")
    movie.save("turning.png")                  # or .gif, .webp
 
-.. image:: https://raw.githubusercontent.com/asteppke/minigeo/main/examples/turning.png
-   :alt: A box turning on a plate, an animated PNG from the ray tracer
-   :width: 300px
-
 Ray tracing
 -----------
 ``scene.render("raytrace")`` traces rays through every pixel: faces are lit by a light from the
