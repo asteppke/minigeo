@@ -6,6 +6,8 @@ TikZ backend). SVG has no lighting, so faces are shaded by laying a translucent 
 over them, darker the more they turn away from the light.
 
 Requires ``pip install "minigeo[svg]"`` (the `svg.py <https://pypi.org/project/svg.py/>`_ package).
+Labels with math (``r"$\theta$"``) are drawn as outlines from matplotlib's mathtext, so they
+also need ``minigeo[mpl]``.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import svg
 
 from ..camera import Camera
 from ..flat import Placed, flatten
+from ..math_labels import has_math, matplotlib_available, outline, plain, warn_without_matplotlib
 from ..render import Face, Label, Marker, Path
 from ..style import Style, color_value
 
@@ -168,6 +171,12 @@ class _Painter:
         style = label.style
         x, y = position
         centered = label.align == "center"
+        if has_math(label.text):
+            if matplotlib_available():
+                self.math_label(label, position)
+                return
+            warn_without_matplotlib()
+            label = Label(label.position, plain(label.text), style, label.align)
         self.elements.append(
             svg.Text(
                 x=x,
@@ -180,6 +189,20 @@ class _Painter:
                 font_size=style.font_size,
                 font_family="sans-serif",
             )
+        )
+
+    def math_label(self, label: Label, position: np.ndarray) -> None:
+        """A label with math, drawn as the outlines of its letters (see :mod:`minigeo.math_labels`)."""
+        style = label.style
+        path = outline(label.text, style.font_size)
+        box = path.get_extents()
+        x, y = position
+        if label.align == "center":  # the middle of the text on the point
+            x, y = x - (box.x0 + box.x1) / 2, y + (box.y0 + box.y1) / 2
+        else:  # the baseline starts a little up and to the right, like plain labels
+            x, y = x + 3, y - 3
+        self.elements.append(
+            svg.Path(d=_path_commands(path, x, y), fill=color_value(style.text_color), stroke="none")
         )
 
     # ------------------------------------------------------------ helpers
@@ -225,3 +248,17 @@ def _stroke(style: Style) -> dict:
         "stroke_opacity": style.opacity if style.opacity < 1 else None,
         "stroke_dasharray": [d * style.line_width for d in dashes] if dashes else None,
     }
+
+
+def _path_commands(path, x: float, y: float) -> list:
+    """SVG path commands for a matplotlib path, whose y points up, with its origin at (x, y)."""
+    kinds = {path.MOVETO: svg.M, path.LINETO: svg.L, path.CURVE3: svg.Q, path.CURVE4: svg.C}
+    commands = []
+    for vertices, code in path.iter_segments(simplify=False):
+        if code == path.CLOSEPOLY:
+            commands.append(svg.Z())
+            continue
+        points = vertices.reshape(-1, 2)
+        numbers = [round(value, 2) for px, py in points for value in (x + px, y - py)]
+        commands.append(kinds[code](*numbers))
+    return commands

@@ -103,3 +103,30 @@ texts later, at any anchor or at a fixed point. Labels follow the geometry when 
    scene.label(box, "right end", at="right", text_color="C3",
                font_size=8)
    scene.label([0, 0, 1], "a point above", text_color="gray")
+
+Math in labels
+==============
+
+Text between ``$`` signs is math, written as in LaTeX. A raw string (``r"..."``) keeps the
+backslashes as they are. A single ``$``, as in ``"costs $5"``, stays a dollar sign.
+
+.. minigeo-example::
+
+   a = Vector([2, 0.3, 0])
+   b = Vector([0.6, 1.6, 0])
+   angle = Angle.between(a, b, radius=0.5)
+
+   scene = Scene()
+   scene.add(a, label=r"$\vec{a}$")
+   scene.add(b, label=r"$\vec{b}$")
+   scene.add(angle, label=r"$\theta = \frac{\pi}{3}$")
+   scene.add(
+       Dimension([0, -0.4, 0], [2, -0.4, 0],
+                 text=r"$\ell_0 = 2\,\mathrm{m}$")
+   )
+
+The same labels work in every backend. matplotlib typesets them itself, and TikZ hands
+them to LaTeX. SVG and the ray tracer draw the letters that matplotlib's mathtext lays
+out, so they need matplotlib (``pip install "minigeo[mpl]"``) but no LaTeX and no fonts
+in the finished picture. Plotly cannot show math in 3D scenes; it gets Greek letters
+and raised and lowered numbers instead: ``x²``, ``θ₁``.

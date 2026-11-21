@@ -43,6 +43,7 @@ from ..colors import to_rgb
 from ..exact import ExactShape, exact_shape
 from ..geometry import Geometry
 from ..groups import Group
+from ..math_labels import has_math, matplotlib_available, plain, raster, warn_without_matplotlib
 from ..render import Face, Label, Marker, Path, Primitive, to_primitives
 from ..style import Style, color_value
 from ..transform import Transform
@@ -1418,8 +1419,31 @@ def _draw_labels(image: Image.Image, labels: list[_Label], canvas: _Canvas, view
         pixels, _ = view.subpixels(np.asarray(label.position, float)[np.newaxis])
         x, y = pixels[0] / view.samples
         color = ImageColor.getrgb(color_value(style.text_color))
+        text = label.text
+        if has_math(text):
+            if matplotlib_available():
+                _paste_math(layer, text, size, color[:3], (x, y), label.align, view.zoom)
+                continue
+            warn_without_matplotlib()
+            text = plain(text)
         if label.align == "center":
-            draw.text((x, y + 0.35 * size), label.text, fill=color, font=font, anchor="ms")
+            draw.text((x, y + 0.35 * size), text, fill=color, font=font, anchor="ms")
         else:
-            draw.text((x + 3 * view.zoom, y - 3 * view.zoom), label.text, fill=color, font=font, anchor="ls")
+            draw.text((x + 3 * view.zoom, y - 3 * view.zoom), text, fill=color, font=font, anchor="ls")
     image.alpha_composite(layer)
+
+
+def _paste_math(layer: Image.Image, text: str, size: float, color, point, align: str, zoom: float) -> None:
+    """Draw a label with math (typeset by matplotlib, see :mod:`minigeo.math_labels`) onto ``layer``."""
+    pixels, origin_x, origin_y = raster(text, size, color)
+    height, width = pixels.shape[:2]
+    x, y = point
+    if align == "center":  # the middle of the text on the point
+        left, top = x - width / 2, y - height / 2
+    else:  # the baseline starts a little up and to the right, like plain labels
+        left, top = x + 3 * zoom - origin_x, y - 3 * zoom - origin_y
+    left, top = round(left), round(top)
+    cut_x, cut_y = max(0, -left), max(0, -top)  # Pillow pastes only at positive positions
+    if cut_x < width and cut_y < height:
+        piece = Image.fromarray(pixels[cut_y:, cut_x:], "RGBA")
+        layer.alpha_composite(piece, (left + cut_x, top + cut_y))

@@ -72,6 +72,12 @@ Planes, angles and dimensions
 .. autoclass:: Dimension
    :members: length, text, anchor
 
+Math in labels
+==============
+
+.. automodule:: minigeo.math_labels
+   :members: has_math, outline, raster, plain
+
 Picking and measuring
 =====================
 

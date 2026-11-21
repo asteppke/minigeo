@@ -45,7 +45,7 @@ Features
 - **Frames and joints**: chains of parts that carry each other, such as an XYZ stage or a
   diffractometer, moved by sliding and turning joints: ``x.value = 0.3``.
 - **Scenes and styles**: geometry is independent of drawing; a ``Scene`` adds colors, opacity,
-  dashes, arrows and labels.
+  dashes, arrows and labels, with math such as ``r"$\theta = \frac{\pi}{3}$"`` in every backend.
 - **Backends**: SVG (vector drawings), TikZ (for LaTeX), matplotlib (3D axes), plotly
   (interactive, WebGL) and a ray tracer (light, shadows, exact spheres and cylinders, and
   looks for diagrams: cel shading, outlines, ambient occlusion), all with the same camera;

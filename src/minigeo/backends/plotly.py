@@ -16,6 +16,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from ..camera import AXIS_INDEX, Camera
+from ..math_labels import plain
 from ..render import Face, Label, Marker, Path, Primitive, bounds
 from ..style import Style, color_value
 
@@ -298,7 +299,7 @@ def label_trace(label: Label) -> go.Scatter3d:
     return go.Scatter3d(
         x=[x], y=[y], z=[z],
         mode="text",
-        text=[label.text],
+        text=[plain(label.text)],  # plotly cannot typeset math in 3D
         textposition="middle center" if label.align == "center" else "top right",
         textfont={"color": color_value(style.text_color), "size": style.font_size},
         hoverinfo="skip",
