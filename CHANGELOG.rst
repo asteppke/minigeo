@@ -30,3 +30,9 @@ Version 0.5.0
 - TikZ backend for rendering scenes as LaTeX ``tikzpicture``
 - Animation support for scenes
 
+Version 0.5.5
+==============
+
+- Picking points on geometry objects
+- Animation support for scenes
+
