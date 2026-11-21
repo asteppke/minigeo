@@ -125,6 +125,28 @@ slider; with matplotlib it plays live or as an HTML player in Jupyter.
    scene.animate(lambda i: box.rotate("z", 10, about="center"), frames=36)
    scene.animate(lambda i: hinge.move(5), frames=18, backend="matplotlib")
 
+The ray tracer traces every frame and makes an animated PNG, which plays wherever images are
+shown: in Jupyter, on web pages and in a README. All frames share one view, so the picture
+does not jump while things move, and every look works.
+
+.. minigeo-example::
+
+   scene = Scene()
+   plate = Cylinder([0, 0, 0], radius=1, height=0.1,
+                    anchor="top")
+   scene.add(plate, fill="whitesmoke", stroke="none")
+   box = Box([0, 0, 0.3], size=(1.2, 0.5, 0.6))
+   scene.add(box, fill="C1")
+
+   def turn(i):
+       box.rotate("z", 20, about="center")
+
+   animation = scene.animate(turn, frames=18, backend="raytrace",
+                             look="diagram")
+
+``animation.save("turning.png")`` writes the animated PNG; ``.gif`` and ``.webp`` work too.
+Tracing takes about half a second per frame.
+
 Saving
 ======
 

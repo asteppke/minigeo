@@ -11,7 +11,9 @@ In a page of the manual::
 
 The code runs while the documentation is built, after ``import numpy as np`` and
 ``from minigeo import *``. Each example runs on its own. If it defines ``scene``, the scene is
-drawn next to the code; whatever it prints is shown below the picture. An example that fails
+drawn next to the code; if it defines ``animation`` (from ``scene.animate(..., backend=
+"raytrace")``), the animation is shown instead, as an animated PNG. Whatever the example
+prints is shown below the picture. An example that fails
 stops the build (``sphinx-build -W``), and ``tests/test_manual.py`` runs every example with
 pytest, using :func:`examples_in` and :func:`run_example` from this module.
 
@@ -64,6 +66,7 @@ class Example:
 class Result:
     scene: object | None
     printed: str
+    animation: object | None = None
 
 
 def run_example(code: str) -> Result:
@@ -73,9 +76,9 @@ def run_example(code: str) -> Result:
     printed = io.StringIO()
     with contextlib.redirect_stdout(printed):
         exec(compile(code, "<minigeo example>", "exec"), namespace)
-    result = Result(namespace.get("scene"), printed.getvalue())
-    if result.scene is None and not result.printed:
-        raise ValueError("A manual example must define `scene` or print something.")
+    result = Result(namespace.get("scene"), printed.getvalue(), namespace.get("animation"))
+    if result.scene is None and result.animation is None and not result.printed:
+        raise ValueError("A manual example must define `scene` or `animation`, or print something.")
     return result
 
 
@@ -100,8 +103,11 @@ def output_html(result: Result, options: dict) -> str:
     """The picture and the printed text, as HTML."""
     parts = []
     column = ""
-    if result.scene is not None:
-        mime, data = picture(result.scene, options)
+    if result.scene is not None or result.animation is not None:
+        if result.animation is not None:
+            mime, data = "image/png", result.animation.to_png()  # browsers play animated PNGs
+        else:
+            mime, data = picture(result.scene, options)
         width = int(options.get("width", DEFAULT_WIDTH))
         column = f' style="width: {width}px"'  # printed text wraps at the picture's width
         source = f"data:{mime};base64,{base64.b64encode(data).decode()}"

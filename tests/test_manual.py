@@ -35,14 +35,14 @@ def test_example_runs_and_draws(example):
     result = minigeo_manual.run_example(example.code)
     html = minigeo_manual.output_html(result, example.options)
     assert html.startswith('<div class="minigeo-output"')
-    if result.scene is not None:
+    if result.scene is not None or result.animation is not None:
         assert "<img" in html
 
 
 def test_failing_examples_are_reported():
     with pytest.raises(ZeroDivisionError):
         minigeo_manual.run_example("1 / 0")
-    with pytest.raises(ValueError, match="scene"):
+    with pytest.raises(ValueError, match="animation"):
         minigeo_manual.run_example("x = 1")
 
 
@@ -78,4 +78,6 @@ def test_render_option_passes_settings_and_is_shown():
 def test_picture_column_has_the_picture_width():
     """Without an explicit width, pictures in a shrink-to-fit column can collapse to nothing."""
     result = minigeo_manual.run_example("scene = Scene()\nscene.add(Box([0, 0, 0], size=1))")
-    assert '<div class="minigeo-output" style="width: 180px">' in minigeo_manual.output_html(result, {"width": 180})
+    assert '<div class="minigeo-output" style="width: 180px">' in minigeo_manual.output_html(
+        result, {"width": 180}
+    )

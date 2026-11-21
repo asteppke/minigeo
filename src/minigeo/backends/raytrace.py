@@ -29,12 +29,14 @@ and image files).
 
 from __future__ import annotations
 
+import copy
 import io
+from collections.abc import Callable
 from dataclasses import dataclass, fields, replace
 from pathlib import Path as FilePath
 
 import numpy as np
-from PIL import Image, ImageColor, ImageDraw, ImageFont
+from PIL import Image, ImageColor, ImageDraw, ImageFont, PngImagePlugin, features
 
 from ..camera import Camera
 from ..colors import to_rgb
@@ -185,9 +187,81 @@ class RaytracedImage:
         path = FilePath(path)
         image = self.to_pil()
         if path.suffix.lower() in {".jpg", ".jpeg", ".bmp"}:
-            background = Image.new("RGBA", image.size, "white")
-            image = Image.alpha_composite(background, image).convert("RGB")
+            image = _on_white(image)
         image.save(path)
+
+
+@dataclass
+class RaytracedAnimation:
+    """
+    The result of a ray traced animation: a list of RGBA frames.
+
+    It plays in Jupyter (as an animated PNG, which browsers show like any image) and can be
+    saved as an animated PNG, GIF or WebP.
+
+    Attributes:
+        frames: One ``(height, width, 4)`` array of 8-bit RGBA values per frame.
+        interval: Time between frames, in milliseconds.
+        repeat: Whether the animation plays in a loop.
+    """
+
+    frames: list[np.ndarray]
+    interval: float = 80
+    repeat: bool = True
+
+    def __len__(self) -> int:
+        return len(self.frames)
+
+    def to_png(self) -> bytes:
+        """The animation as the contents of an animated PNG (APNG) file."""
+        buffer = io.BytesIO()
+        self._write(buffer, "PNG")
+        return buffer.getvalue()
+
+    def _repr_png_(self) -> bytes:
+        return self.to_png()
+
+    def save(self, path: str | FilePath) -> None:
+        """
+        Write the animation to a file; the extension chooses the format.
+
+        * ``.png`` or ``.apng``: an animated PNG, sharp and with transparency
+        * ``.gif``: a GIF, on a white background (GIF has no smooth transparency)
+        * ``.webp``: an animated WebP, small and lossless (if Pillow supports WebP)
+        """
+        path = FilePath(path)
+        formats = {".png": "PNG", ".apng": "PNG", ".gif": "GIF", ".webp": "WEBP"}
+        suffix = path.suffix.lower()
+        if suffix not in formats:
+            raise ValueError(f"Cannot save an animation as {path.name}: use .png, .apng, .gif or .webp.")
+        with open(path, "wb") as file:
+            self._write(file, formats[suffix])
+
+    def _write(self, file, format: str) -> None:
+        images = [Image.fromarray(frame) for frame in self.frames]
+        options = {"save_all": True, "append_images": images[1:], "duration": self.interval}
+        if format == "PNG":
+            # each frame replaces the previous one, also where it is transparent
+            options |= {
+                "disposal": PngImagePlugin.Disposal.OP_BACKGROUND,
+                "blend": PngImagePlugin.Blend.OP_SOURCE,
+            }
+            options["loop"] = 0 if self.repeat else 1
+        elif format == "GIF":
+            images = [_on_white(image) for image in images]
+            options |= {"append_images": images[1:], "disposal": 2}
+            if self.repeat:
+                options["loop"] = 0
+        else:
+            if not features.check("webp"):
+                raise RuntimeError("This Pillow cannot write WebP; save as .png or .gif instead.")
+            options |= {"lossless": True, "loop": 0 if self.repeat else 1}
+        images[0].save(file, format=format, **options)
+
+
+def _on_white(image: Image.Image) -> Image.Image:
+    background = Image.new("RGBA", image.size, "white")
+    return Image.alpha_composite(background, image).convert("RGB")
 
 
 def render(
@@ -224,17 +298,83 @@ def render(
         >>> image.save("scene.png")
         >>> scene.render("raytrace", look="diagram", outline_width=2)
     """
-    if samples < 1:
-        raise ValueError("samples must be at least 1.")
+    camera = Camera(elev, azim, vertical_axis)
+    look = _resolve_look(look, look_changes)
+    return RaytracedImage(_draw(scene, camera, None, width, margin, samples, background, look))
+
+
+def animate(
+    scene,
+    update: Callable[[int], None],
+    frames: int,
+    *,
+    interval: float = 80,
+    repeat: bool = True,
+    width: int = 400,
+    elev: float = 30.0,
+    azim: float = -60.0,
+    vertical_axis: str = "z",
+    margin: float = 20,
+    samples: int = 2,
+    background: str | None = None,
+    look: str | Look = "natural",
+    **look_changes,
+) -> RaytracedAnimation:
+    """
+    Ray trace an animation: the scene as it is, then after ``update(i)`` for each further frame.
+
+    All frames share one view, fitted around everything the scene covers in any frame, so the
+    picture does not jump while things move. Every frame is traced, so the defaults are a
+    little smaller and coarser than for :func:`render`; about half a second per frame.
+    Usually called through ``scene.animate(update, frames, backend="raytrace")``.
+
+    Args:
+        scene: The :class:`~minigeo.scene.Scene` to animate. Afterwards it stays as it is
+            in the last frame.
+        update: Changes the geometry for frame ``i`` (1, 2, ...).
+        frames: The number of frames, including the first one.
+        interval: Time between frames, in milliseconds.
+        repeat: Whether the animation plays in a loop.
+        width, elev, azim, vertical_axis, margin, samples, background, look: As for
+            :func:`render`; further keywords change single settings of the look, as there.
+
+    Example:
+        >>> movie = scene.animate(lambda i: box.rotate("z", 10, about="center"), frames=36,
+        ...                       backend="raytrace", look="diagram")
+        >>> movie.save("turning.png")   # an animated PNG
+    """
+    if frames < 1:
+        raise ValueError("An animation needs at least one frame.")
+    camera = Camera(elev, azim, vertical_axis)
+    look = _resolve_look(look, look_changes)
+    states = [copy.deepcopy(scene)]
+    for i in range(1, frames):
+        update(i)
+        states.append(copy.deepcopy(scene))
+    everywhere = np.vstack([_Contents.collect(state).points(camera) for state in states])
+    pictures = [
+        _draw(state, camera, everywhere, width, margin, samples, background, look) for state in states
+    ]
+    return RaytracedAnimation(pictures, interval, repeat)
+
+
+def _resolve_look(look: str | Look, changes: dict) -> Look:
     if isinstance(look, str):
         if look not in LOOKS:
             raise ValueError(f"Unknown look {look!r}; use one of {', '.join(LOOKS)} or a Look.")
         look = LOOKS[look]
-    look = look.with_(**look_changes)
+    return look.with_(**changes)
 
-    camera = Camera(elev, azim, vertical_axis)
+
+def _draw(
+    scene, camera: Camera, fit: np.ndarray | None, width, margin, samples, background, look: Look
+) -> np.ndarray:
+    """Trace one picture. ``fit`` are the points the view is fitted to; None: the scene's own."""
+    if samples < 1:
+        raise ValueError("samples must be at least 1.")
     contents = _Contents.collect(scene)
-    view = _View.fitting(contents.points(camera), camera, width, margin * width / REFERENCE_WIDTH, samples)
+    points = contents.points(camera) if fit is None else fit
+    view = _View.fitting(points, camera, width, margin * width / REFERENCE_WIDTH, samples)
     surfaces = _Surfaces(contents.surfaces, view.size)
     if look.palette is not None:
         surfaces.colors = _nearest_colors(surfaces.colors, look.palette)
@@ -251,7 +391,7 @@ def render(
     image = canvas.downsampled(background)
     _draw_labels(image, contents.labels, canvas, view)
     pixels = np.asarray(image)
-    return RaytracedImage(_gray(pixels) if look.grayscale else pixels)
+    return _gray(pixels) if look.grayscale else pixels
 
 
 def _nearest_colors(colors: np.ndarray, palette: tuple[str, ...]) -> np.ndarray:

@@ -177,7 +177,14 @@ frame, for example to turn a box a little:
 
 With plotly you get a play button and a slider, and the animation also runs in an exported
 HTML file. With matplotlib it plays live under ipympl (``%matplotlib widget``) and otherwise
-shows as an HTML player in Jupyter; ``.save("turn.gif")`` writes a GIF.
+shows as an HTML player in Jupyter; ``.save("turn.gif")`` writes a GIF. The ray tracer makes
+an animated PNG, in any look, which plays wherever images are shown:
+
+.. code-block:: python
+
+   movie = scene.animate(lambda i: box.rotate("z", 20, about="center"), frames=18,
+                         backend="raytrace", look="diagram")
+   movie.save("turning.png")                  # or .gif, .webp
 
 Ray tracing
 -----------

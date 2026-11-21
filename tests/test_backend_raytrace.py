@@ -440,3 +440,87 @@ def test_every_named_look_renders():
     scene = floor_and_block()
     for name in raytrace.LOOKS:
         assert render(scene, width=60, look=name).height > 0
+
+
+# ---------------------------------------------------------------- animations
+
+
+def turning_box_scene():
+    scene = Scene()
+    box = scene.add(Box([0, 0, 0], size=(1.5, 0.5, 0.5)), fill="C1")
+    return scene, box
+
+
+def test_animation_frames_share_one_view():
+    scene, box = turning_box_scene()
+    movie = raytrace.animate(scene, lambda i: box.rotate("z", 30, about="center"), 4, width=80, samples=1)
+    assert len(movie) == 4
+    assert len({frame.shape for frame in movie.frames}) == 1  # the same size, although the box turns
+    assert not np.array_equal(movie.frames[0], movie.frames[1])
+    assert np.allclose(
+        box.axes[0], [np.cos(np.radians(90)), np.sin(np.radians(90)), 0]
+    )  # left as in the last frame
+
+
+def test_animation_through_the_scene():
+    scene, box = turning_box_scene()
+    movie = scene.animate(lambda i: box.rotate("z", 45), frames=3, backend="raytrace", width=60, look="cel")
+    assert isinstance(movie, raytrace.RaytracedAnimation) and len(movie) == 3
+    with pytest.raises(ValueError, match="raytrace"):
+        scene.animate(lambda i: None, frames=2, backend="svg")
+    with pytest.raises(ValueError, match="at least one frame"):
+        raytrace.animate(scene, lambda i: None, 0)
+
+
+def test_animated_png_gif_and_webp(tmp_path):
+    from PIL import Image, features
+
+    scene, box = turning_box_scene()
+    movie = raytrace.animate(scene, lambda i: box.rotate("z", 30), 3, width=60, samples=1, interval=50)
+    data = movie.to_png()
+    assert data.startswith(b"\x89PNG") and b"acTL" in data  # an animated PNG
+    assert movie._repr_png_() == data
+
+    movie.save(tmp_path / "movie.png")
+    movie.save(tmp_path / "movie.gif")
+    for name in ("movie.png", "movie.gif"):
+        with Image.open(tmp_path / name) as image:
+            assert image.n_frames == 3
+            assert image.info.get("loop") == 0
+    with Image.open(tmp_path / "movie.png") as image:
+        assert image.info.get("duration") == 50
+    if features.check("webp"):
+        movie.save(tmp_path / "movie.webp")
+        with Image.open(tmp_path / "movie.webp") as image:
+            assert image.n_frames == 3
+    with pytest.raises(ValueError, match="png, .apng, .gif or .webp"):
+        movie.save(tmp_path / "movie.mp4")
+
+
+def test_animation_without_repeat_plays_once(tmp_path):
+    from PIL import Image
+
+    scene, box = turning_box_scene()
+    movie = raytrace.animate(scene, lambda i: box.rotate("z", 30), 2, width=40, samples=1, repeat=False)
+    movie.save(tmp_path / "once.png")
+    with Image.open(tmp_path / "once.png") as image:
+        assert image.info.get("loop") == 1
+
+
+def test_transparent_frames_replace_each_other(tmp_path):
+    """With a transparent background, a frame must not show the previous one through it."""
+    from PIL import Image
+
+    scene = Scene()
+    ball = scene.add(Sphere([0, 0, 0], radius=0.3), fill="red", stroke="none")
+    scene.add(Point([2, 0, 0]), fill="none")  # keeps the view wide enough for the ball to move
+    scene.add(Point([-1, 0, 0]), fill="none")
+    movie = raytrace.animate(
+        scene, lambda i: Transform().translate([1.5, 0, 0]) @ ball, 2, width=100, elev=90, azim=-90
+    )
+    movie.save(tmp_path / "ball.png")
+    with Image.open(tmp_path / "ball.png") as image:
+        image.seek(1)
+        last = np.asarray(image.convert("RGBA"))
+    first_place = movie.frames[0][..., 3] == 255
+    assert (last[first_place][:, 3] == 0).all()  # where the ball was, it is transparent again

@@ -338,18 +338,26 @@ class Scene:
                 turning a box a little: ``lambda i: box.rotate("z'", 10, about="center")``.
                 It may move geometry, but should not add, remove or restyle anything.
             frames: The number of frames, including the first one.
-            backend: ``"plotly"`` (a figure with play button and slider, runs in the browser)
-                or ``"matplotlib"`` (live with ipympl, otherwise an HTML player in Jupyter).
+            backend: ``"plotly"`` (a figure with play button and slider, runs in the browser),
+                ``"matplotlib"`` (live with ipympl, otherwise an HTML player in Jupyter) or
+                ``"raytrace"`` (an animated PNG, GIF or WebP; see
+                :func:`~minigeo.backends.raytrace.animate`).
             **options: Passed on to the backend, e.g. ``interval=50`` (milliseconds between
-                frames) or the view options ``elev``, ``azim`` and ``vertical_axis``.
+                frames), the view options ``elev``, ``azim`` and ``vertical_axis``, or
+                ``look="diagram"`` for the ray tracer.
 
         Example:
             >>> scene.animate(lambda i: box.rotate("z", 10, about="center"), frames=36)
+            >>> movie = scene.animate(lambda i: box.rotate("z", 10, about="center"), frames=36,
+            ...                       backend="raytrace")
+            >>> movie.save("turning.png")
         """
-        animated = {"plotly", "matplotlib"}
+        animated = ("plotly", "matplotlib", "raytrace")
         if backend not in animated:
-            raise ValueError(f"Animations work with {' and '.join(sorted(animated))}, not {backend!r}.")
+            raise ValueError(f"Animations work with {', '.join(animated)}, not {backend!r}.")
         module = self._backend(backend)
+        if backend == "raytrace":  # traces the scene itself, frame by frame
+            return module.animate(self, update, frames, **options)
         return module.animate(self.snapshots(update, frames), **options)
 
     def _backend(self, backend: str):

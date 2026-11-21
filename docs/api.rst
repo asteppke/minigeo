@@ -109,7 +109,7 @@ Usually used through :meth:`Scene.render`, :meth:`Scene.save` and :meth:`Scene.a
    :members: render, animate
 
 .. automodule:: minigeo.backends.raytrace
-   :members: render, RaytracedImage, Look, LOOKS
+   :members: render, RaytracedImage, animate, RaytracedAnimation, Look, LOOKS
 
 .. automodule:: minigeo.backends.tikz
    :members: render, TikzPicture, latex_text
