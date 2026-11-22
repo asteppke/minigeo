@@ -63,7 +63,7 @@ of the given ``length``.
    scene = Scene()
    scene.add(Point([0, 0, 0]), fill="black")
    scene.add(Line([0, 0, 0], [1, 1, 0]))
-   up = Axis([0, 0, 1], position=[1, 1, 0], length=0.8)
+   up = Axis([0, 0, 1], origin=[1, 1, 0], length=0.8)
    scene.add(up, stroke="C3")
 
 Groups

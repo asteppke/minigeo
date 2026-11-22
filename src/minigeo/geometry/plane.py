@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..transform import rotate_arbitrary_vector_matrix
-from .primitives import Line, Vector
+from .primitives import Vector
 from .shapes import Rectangle
 
 
@@ -66,8 +66,8 @@ class Plane(Rectangle):
 
     @property
     def normal(self) -> np.ndarray:
-        """The unit normal (the plane's own z' axis)."""
-        return self.axes[2]
+        """The unit normal: the plane's own z' axis, or its opposite after mirroring."""
+        return -self.axes[2] if self._mirrored else self.axes[2]
 
     @property
     def point(self) -> np.ndarray:
@@ -86,24 +86,24 @@ class Plane(Rectangle):
     def contains(self, point, tolerance: float = 1e-9) -> bool:
         return abs(self.distance_to(point)) <= tolerance
 
-    def intersect(self, line: Line | tuple) -> np.ndarray | None:
+    def intersect(self, line, *, segment: bool = False) -> np.ndarray:
         """
-        Where the (infinite) line through a :class:`Line` or :class:`Vector` meets the plane.
+        Where a line meets the plane, as for every shape (:meth:`Shape.intersect`), but with
+        the whole infinite plane, not only the drawn patch.
 
         Args:
-            line: A Line, a Vector, or a pair of points ``(start, end)``.
+            line: A Line, Vector, Axis, Polyline, Curve, or a pair of points ``(start, end)``.
+            segment: Only points between the line's start and end; otherwise the line is
+                extended in both directions.
 
         Returns:
-            The intersection point, or None if the line is parallel to the plane.
+            An ``(n, 3)`` array: one point, or none if the line runs parallel to the plane
+            (a polyline can cross it several times).
+
+        Example:
+            >>> hit = floor.intersect(ray)[0]
         """
-        start, end = (line.start, line.end) if isinstance(line, Line) else line
-        start, end = np.asarray(start, dtype=float), np.asarray(end, dtype=float)
-        direction = end - start
-        along_normal = float(np.dot(direction, self.normal))
-        if abs(along_normal) < 1e-12:
-            return None
-        t = float(np.dot(self.center - start, self.normal)) / along_normal
-        return start + t * direction
+        return super().intersect(line, segment=segment)
 
     def normal_vector(self, length: float = 1.0) -> Vector:
         """The normal as a :class:`Vector` from the plane's center, e.g. for drawing it."""

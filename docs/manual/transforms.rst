@@ -38,7 +38,8 @@ degrees.
    scene.add_frame()
 
 The box went around the origin. To turn a shape in place, rotate it ``about`` its own
-center, or about any other point. ``shape.rotate`` is a shorthand for a rotation transform.
+center, about one of its anchors (``about="bottom left"``), or about any other point.
+``shape.rotate`` is a shorthand for a rotation transform.
 
 .. minigeo-example::
 
@@ -89,20 +90,22 @@ right is applied first, so ``rotation @ translation`` moves first and then turns
 Scaling and shearing
 ====================
 
-Scaling stretches along the world axes. Shearing shifts one coordinate in proportion to
-another: with the factors ``(xy, yx, xz, zx)``, ``xy`` is how far x moves per unit of y.
+Scaling stretches along the world axes; one number scales evenly. Shearing shifts one
+coordinate in proportion to another: ``xy`` is how far x moves per unit of y, and likewise
+``yx``, ``xz``, ``zx``, ``yz`` and ``zy``.
 
 .. minigeo-example::
 
    stretch = Transform().scale([2, 1, 0.5])
-   shear = Transform().shear([0.6, 0, 0, 0])
+   shear = Transform().shear(xy=0.6)
 
    scene = Scene()
    scene.add(stretch @ Box([0, 0, 0], size=1), fill="C0")
    scene.add(shear @ Box([0, 2, 0], size=1), fill="C1")
 
 Transforms are 4 × 4 matrices in homogeneous coordinates, which you can read in
-``transform.matrix``:
+``transform.matrix`` (and pass to ``Transform(matrix)``). ``transform.inverse()`` undoes a
+transform, and ``transform.copy()`` makes an independent copy:
 
 .. minigeo-example::
 

@@ -88,6 +88,7 @@ class Shape(Geometry):
         local = self.calc_initial_vertices() if vertices is None else vertices
         self._local_vertices = np.asarray(local, dtype=float)
         self._mirrored = False  # set by mirroring transforms, see face_indices
+        self._deformed = False  # set by scaling or shear: then sizes like radius are as created
 
         if vertices is None:
             anchor = self.default_anchor if anchor is None else anchor
@@ -239,6 +240,7 @@ class Shape(Geometry):
 
         if not np.allclose(stretch, np.eye(3)):  # skip for rigid transforms, avoids rounding drift
             self._local_vertices = self._local_vertices @ stretch.T
+            self._deformed = True
             if np.linalg.det(stretch) < 0:  # mirrored: faces would now wind the wrong way
                 self._mirrored = not self._mirrored
 
@@ -264,6 +266,10 @@ class Shape(Geometry):
                 raise ValueError(f'Unknown local axis {axis!r}; use "x\'", "y\'" or "z\'".')
             axis = self.axes[local_axes[axis]]
         super().rotate(axis, angle, in_degrees, about=about)
+
+    def _sizes_note(self) -> str:
+        """Added to ``repr`` after scaling: the size attributes still describe the shape as created."""
+        return " (as created; scaled since)" if self._deformed else ""
 
     def __repr__(self):
         return f"{self.__class__.__name__} at {self.center} with vertices {self.vertices}"

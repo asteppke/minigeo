@@ -61,3 +61,11 @@ Version 0.7.0
 ==============
 
 - Misuba integration for rendering scenes
+
+Version 0.8.0
+==============
+
+- API cleanup, e.g Plane.intersection method standardized
+- Improved handling of geometry object intersections
+- Axis uses origin for placement
+- Explicit UTF-8 encoding for all text files

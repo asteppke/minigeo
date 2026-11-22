@@ -6,9 +6,9 @@ moving a shape after adding it moves it in the next rendering, too.
 
 Example:
     >>> scene = Scene()
-    >>> table = scene.add(Box([0, 0, 0], dimensions=[2, 1, 0.1]), fill="peru")
-    >>> cup = scene.add(Cylinder(table.anchor("top"), dimensions=[0.1, 0.2]), label="cup")
-    >>> scene.render()  # with matplotlib; later also "svg" and "plotly"
+    >>> table = scene.add(Box([0, 0, 0], size=(2, 1, 0.1)), fill="peru")
+    >>> cup = scene.add(Cylinder(table.anchor("top"), radius=0.1, height=0.2), label="cup")
+    >>> scene.render("svg")
 """
 
 from __future__ import annotations
@@ -38,6 +38,27 @@ BACKENDS = {
     "raytrace": "minigeo.backends.raytrace",
     "tikz": "minigeo.backends.tikz",
     "mitsuba": "minigeo.backends.mitsuba",
+}
+
+
+#: The file extensions each backend can write with :meth:`Scene.save` ("mesh": OBJ and STL files).
+SAVE_FORMATS = {
+    "svg": (".svg",),
+    "plotly": (".html",),
+    "tikz": (".tex", ".tikz", ".txt", ".pdf"),
+    "matplotlib": (".png", ".pdf", ".svg", ".jpg", ".jpeg", ".eps"),
+    "raytrace": (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"),
+    "mitsuba": (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"),
+    "mesh": (".obj", ".stl"),
+}
+
+#: Which backend :meth:`Scene.save` uses for an extension when none is given.
+DEFAULT_SAVING = {
+    "svg": (".svg",),
+    "plotly": (".html",),
+    "tikz": (".tex",),
+    "matplotlib": (".png", ".pdf"),
+    "mesh": (".obj", ".stl"),
 }
 
 
@@ -154,10 +175,12 @@ class Scene:
                 they win over ``style``.
 
         Example:
-            >>> box = scene.add(Box([0, 0, 0], dimensions=[1, 1, 1]), fill="red", opacity=0.5)
-            >>> dice = scene.add(Box([2, 0, 0], dimensions=[1, 1, 1]), face_styles={"top": Style(fill="gold")})
+            >>> box = scene.add(Box([0, 0, 0], size=1), fill="red", opacity=0.5)
+            >>> dice = scene.add(Box([2, 0, 0], size=1), face_styles={"top": Style(fill="gold")})
         """
         item_style = (style if style is not None else Style()) | Style(**style_fields)
+        if frame and not isinstance(geometry, Shape | Frame):
+            raise TypeError(f"frame=True draws a shape's own axes; a {type(geometry).__name__} has none.")
         if face_styles:
             _check_face_keys(geometry, face_styles)
         self.items.append(SceneItem(geometry, item_style, dict(face_styles or {}), layer))
@@ -347,13 +370,15 @@ class Scene:
                 :class:`~minigeo.backends.raytrace.RaytracedImage` with light and shadows),
                 ``"mitsuba"`` (the same, rendered by Mitsuba 3) or ``"tikz"`` (returns a
                 :class:`~minigeo.backends.tikz.TikzPicture` for LaTeX).
-            **options: Passed on to the backend, e.g. ``elev=20``, ``show_axes=False``.
+            **options: Passed on to the backend, e.g. ``elev=20``, or ``show_axes=False`` for matplotlib.
         """
         return self._backend(backend).render(self, **options)
 
     def save(self, path: str | FilePath, *, backend: str | None = None, **options) -> None:
         """
-        Save the scene; the file extension chooses the backend.
+        Save the scene to a file.
+
+        Without ``backend``, the file extension chooses it:
 
         * ``.svg``: the SVG backend
         * ``.html``: the plotly backend (an interactive page)
@@ -364,43 +389,47 @@ class Scene:
 
         Args:
             path: The file to write.
-            backend: ``"raytrace"`` or ``"mitsuba"`` to save a rendered image instead (``.png``,
-                ``.jpg``, ...), or ``"tikz"`` for TikZ code (``.tex``) or a PDF compiled from it
-                (``.pdf``).
+            backend: Any backend, to choose it explicitly, as long as it can write the
+                extension (see :data:`SAVE_FORMATS`): e.g. ``"raytrace"`` or ``"mitsuba"``
+                for a rendered ``.png`` or ``.jpg``, ``"tikz"`` for a PDF compiled from TikZ,
+                or ``"matplotlib"`` for an ``.svg``.
             **options: Passed on to the backend, e.g. ``elev=20`` or ``width=600``.
 
         Example:
-            >>> scene.save("table.svg", show_axes=False)
+            >>> scene.save("table.svg", elev=20)
             >>> scene.save("table.png", backend="raytrace", width=1000)
             >>> scene.save("table.tex", width=6)   # TikZ, 6 cm wide
             >>> scene.save("table.stl")            # for a 3D printer
         """
         path = FilePath(path)
         suffix = path.suffix.lower()
-        if backend in {"raytrace", "tikz", "mitsuba"}:
-            self.render(backend, **options).save(path)
-        elif backend is not None:
+        if backend is None:
+            backend = next((name for name, suffixes in DEFAULT_SAVING.items() if suffix in suffixes), None)
+            if backend is None:
+                known = ", ".join(s for suffixes in DEFAULT_SAVING.values() for s in suffixes)
+                raise ValueError(f"Cannot save {path.name}: use {known}, or choose a backend.")
+        elif backend not in SAVE_FORMATS:
+            raise ValueError(f"Unknown backend {backend!r}; available: {', '.join(SAVE_FORMATS)}.")
+        elif suffix not in SAVE_FORMATS[backend]:
             raise ValueError(
-                "save() chooses the backend from the file extension; backend can be 'raytrace', 'mitsuba' or 'tikz'."
+                f"The {backend} backend cannot write {suffix or 'files without extension'}; "
+                f"it writes {', '.join(SAVE_FORMATS[backend])}."
             )
-        elif suffix in {".obj", ".stl"}:
+
+        if backend == "mesh":
             from .meshfiles import write_mesh
 
             if options:
                 raise TypeError(f"Saving {suffix} files takes no options, got {', '.join(options)}.")
             write_mesh(path, self)
-        elif suffix == ".tex":
-            self.render("tikz", **options).save(path)
-        elif suffix == ".svg":
-            self.render("svg", **options).save(path)
-        elif suffix == ".html":
+        elif backend == "plotly":
             self.render("plotly", **options).write_html(path)
-        elif suffix in {".png", ".pdf"}:
+        elif backend == "matplotlib":
             from .backends.matplotlib import to_figure
 
             to_figure(self, **options).savefig(path)
-        else:
-            raise ValueError(f"Cannot save {path.name}: use .svg, .html, .tex, .png, .pdf, .obj or .stl.")
+        else:  # svg, tikz, raytrace, mitsuba: their results know how to save themselves
+            self.render(backend, **options).save(path)
 
     def snapshots(self, update: Callable[[int], None], frames: int) -> list[list[Primitive]]:
         """

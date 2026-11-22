@@ -3,8 +3,8 @@ Where lines meet shapes.
 
 :func:`intersections` (also ``shape.intersect(line)``) returns the points where a line
 enters and leaves a shape, sorted along the line. Spheres and cylinders are met exactly,
-as the round shapes they describe (also when stretched, as ellipsoids). All other shapes
-are met at their flat faces, exactly as they are drawn.
+as the round shapes they describe (also when stretched, as ellipsoids), and planes as
+infinite planes. All other shapes are met at their flat faces, exactly as they are drawn.
 
 The line can be a :class:`~minigeo.Line`, :class:`~minigeo.Vector`, :class:`~minigeo.Axis`
 or a pair of points; like :meth:`Plane.intersect <minigeo.Plane.intersect>`, it counts as
@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 
 from .exact import unit_map
-from .geometry import Axis, Line, Polyline, Shape
+from .geometry import Axis, Line, Plane, Polyline, Shape
 from .geometry.mesh import triangulate
 
 #: Hits closer than this (as a fraction of the line's length) count as one point.
@@ -71,7 +71,9 @@ def _along(start: np.ndarray, end: np.ndarray, shape: Shape, segment: bool) -> n
     """The points ``start + t * (end - start)`` on the shape, sorted by ``t``."""
     direction = end - start
     mapped = unit_map(shape)
-    if mapped is None:
+    if isinstance(shape, Plane):  # the whole infinite plane
+        t = _plane_t(start, direction, shape)
+    elif mapped is None:
         t = _faces_t(start, direction, shape)
     else:  # the line seen from the unit sphere or cylinder; t stays the same
         kind, to_world = mapped
@@ -87,10 +89,19 @@ def _along(start: np.ndarray, end: np.ndarray, shape: Shape, segment: bool) -> n
     return start + t[:, np.newaxis] * direction
 
 
+def _plane_t(origin: np.ndarray, direction: np.ndarray, plane: Plane) -> np.ndarray:
+    """Where the line crosses an infinite plane (nowhere if it runs parallel to it)."""
+    along_normal = float(direction @ plane.normal)
+    if abs(along_normal) < 1e-12 * np.linalg.norm(direction):
+        return np.empty(0)
+    return np.array([float((plane.center - origin) @ plane.normal) / along_normal])
+
+
 def _faces_t(origin: np.ndarray, direction: np.ndarray, shape: Shape) -> np.ndarray:
     """Where the line crosses the shape's faces (cut into triangles), by Möller and Trumbore."""
-    _, triangles = triangulate(shape.face_indices)
-    corners = shape.vertices[triangles]
+    vertices = shape.vertices
+    _, triangles = triangulate(shape.face_indices, vertices)
+    corners = vertices[triangles]
     a, edge1, edge2 = corners[:, 0], corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]
     across = np.cross(direction, edge2)
     determinant = np.einsum("ij,ij->i", edge1, across)
@@ -130,11 +141,16 @@ def _cylinder_t(origin: np.ndarray, direction: np.ndarray) -> np.ndarray:
 
 
 def _quadratic(a: float, b: float, c: float) -> np.ndarray:
-    """The real solutions of ``a t² + b t + c = 0`` (one if they touch, none if a is 0)."""
+    """
+    The real solutions of ``a t² + b t + c = 0`` for a line and a unit sphere or cylinder
+    (one if the line touches it, none if a is 0).
+    """
     if a < 1e-30:
         return np.empty(0)
     discriminant = b * b - 4 * a * c
-    if discriminant < -1e-12 * b * b:
+    # A touching line gives 0 only up to rounding, which can make it slightly negative, also
+    # when b is 0. c is a squared distance minus 1 (the unit radius), so it rounds by ~1e-16.
+    if discriminant < -1e-9 * (b * b + 4 * a * (abs(c) + 1)):
         return np.empty(0)
     root = np.sqrt(max(discriminant, 0.0))
     return np.unique([(-b - root) / (2 * a), (-b + root) / (2 * a)])

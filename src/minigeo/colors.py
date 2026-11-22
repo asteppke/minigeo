@@ -1,13 +1,49 @@
 """
 Colors as red, green and blue values, for backends that write colors themselves (TikZ).
 
-Colors are CSS color names (``"peru"``), hex codes (``"#ff8800"`` or ``"#f80"``), or ``"C0"``
-to ``"C9"`` for matplotlib's default colors.
+Colors are CSS color names (``"peru"``), hex codes (``"#ff8800"`` or ``"#f80"``), ``"C0"``
+to ``"C9"`` for matplotlib's default colors, or matplotlib's one-letter colors (``"k"``).
 """
 
 from __future__ import annotations
 
-from .style import color_value
+#: matplotlib's default color cycle, so that "C0" ... "C9" work in every backend.
+COLOR_CYCLE = (
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
+)
+
+
+#: matplotlib's one-letter colors, so that ``"k"`` or ``"r"`` work in every backend.
+SHORT_COLORS = {
+    "b": "#0000ff",
+    "g": "#008000",
+    "r": "#ff0000",
+    "c": "#00bfbf",
+    "m": "#bf00bf",
+    "y": "#bfbf00",
+    "k": "#000000",
+    "w": "#ffffff",
+}
+
+
+def color_value(color: str) -> str:
+    """
+    Translate matplotlib's ``"C0"`` ... ``"C9"`` and one-letter colors (``"k"``) into hex
+    codes; other colors are returned unchanged.
+    """
+    if len(color) == 2 and color[0] == "C" and color[1].isdigit():
+        return COLOR_CYCLE[int(color[1])]
+    return SHORT_COLORS.get(color, color)
+
 
 #: The CSS named colors (CSS Color Module Level 4), as 8-bit red, green and blue values.
 CSS_COLORS: dict[str, tuple[int, int, int]] = {
@@ -183,4 +219,4 @@ def to_rgb(color: str) -> tuple[float, float, float]:
         raise ValueError(f"Not a hex color: {color!r}; use e.g. '#ff8800' or '#f80'.")
     if value in CSS_COLORS:
         return tuple(channel / 255 for channel in CSS_COLORS[value])
-    raise ValueError(f"Unknown color {color!r}: use a CSS color name, a hex code or C0 to C9.")
+    raise ValueError(f"Unknown color {color!r}: use a CSS color name, a hex code, C0 to C9 or k, r, ...")

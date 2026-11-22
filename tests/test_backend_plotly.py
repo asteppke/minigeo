@@ -98,3 +98,12 @@ def test_empty_scene_and_html(tmp_path):
     target = tmp_path / "scene.html"
     figure.write_html(target, include_plotlyjs="cdn")
     assert "plotly" in target.read_text()
+
+
+def test_no_stroke_and_no_fill_draw_nothing():
+    scene = Scene()
+    scene.add(Box([0, 0, 0], size=1), stroke="none")
+    scene.add(Line([0, 0, 0], [1, 1, 1]), stroke="none")
+    scene.add(Point([1, 0, 0]), fill="none")
+    figure = scene.render("plotly")
+    assert [trace.type for trace in figure.data] == ["mesh3d"]

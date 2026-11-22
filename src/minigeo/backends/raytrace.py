@@ -42,6 +42,7 @@ from ..camera import Camera
 from ..colors import to_rgb
 from ..exact import ExactShape, exact_shape
 from ..geometry import Geometry
+from ..geometry.mesh import polygon_triangles
 from ..groups import Group
 from ..math_labels import has_math, matplotlib_available, plain, raster, warn_without_matplotlib
 from ..render import Face, Label, Marker, Path, Primitive, to_primitives
@@ -709,8 +710,8 @@ class _Surfaces:
         for index, surface in enumerate(surfaces):
             if surface.kind == "face":
                 corners = surface.points
-                for k in range(1, len(corners) - 1):  # a fan of triangles
-                    triangles.append([corners[0], corners[k], corners[k + 1]])
+                for triangle in polygon_triangles(corners):  # also for concave faces
+                    triangles.append(corners[triangle])
                     owners.append(index)
         self.triangles = np.array(triangles, dtype=float).reshape(-1, 3, 3)
         self.triangle_surface = np.array(owners, dtype=int)

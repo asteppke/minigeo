@@ -14,19 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields, replace
 
-#: matplotlib's default color cycle, so that "C0" ... "C9" work in every backend.
-COLOR_CYCLE = (
-    "#1f77b4",
-    "#ff7f0e",
-    "#2ca02c",
-    "#d62728",
-    "#9467bd",
-    "#8c564b",
-    "#e377c2",
-    "#7f7f7f",
-    "#bcbd22",
-    "#17becf",
-)
+from .colors import COLOR_CYCLE, color_value, to_rgb
 
 DASH_STYLES = ("solid", "dashed", "dotted")
 
@@ -37,7 +25,8 @@ class Style:
     The look of a geometry. Unset fields (``None``) are taken from more general styles.
 
     Colors are CSS color names (``"peru"``), hex codes (``"#ff8800"``), ``"C0"`` to ``"C9"``
-    for matplotlib's default colors, or ``"none"`` for nothing.
+    for matplotlib's default colors, its one-letter colors (``"k"``), or ``"none"`` for
+    nothing. Colors and sizes are checked when the style is made, so a typo fails right away.
 
     Attributes:
         fill: Color of faces.
@@ -62,10 +51,26 @@ class Style:
     font_size: float | None = None
 
     def __post_init__(self):
+        """Check the fields right away, so that a typo fails here and not in a backend."""
         if self.dash is not None and self.dash not in DASH_STYLES:
             raise ValueError(f"Unknown dash style {self.dash!r}; use one of {', '.join(DASH_STYLES)}.")
         if self.opacity is not None and not 0 <= self.opacity <= 1:
             raise ValueError(f"opacity must be between 0 and 1, got {self.opacity}.")
+        for name in ("fill", "stroke", "text_color"):
+            color = getattr(self, name)
+            if color is None or color == "none":
+                continue
+            if not isinstance(color, str):
+                raise TypeError(f"{name} must be a color name or code, got {color!r}.")
+            try:
+                to_rgb(color)
+            except ValueError as error:
+                raise ValueError(f"{name}: {error}") from None
+        for name, smallest in (("line_width", 0), ("marker_size", 0), ("font_size", 1e-9)):
+            value = getattr(self, name)
+            if value is not None and not value >= smallest:
+                limit = "positive" if smallest else "zero or more"
+                raise ValueError(f"{name} must be {limit}, got {value!r}.")
 
     def __or__(self, other: Style) -> Style:
         """Combine two styles: every field set in ``other`` wins."""
@@ -100,8 +105,4 @@ DEFAULT_STYLE = Style(
 )
 
 
-def color_value(color: str) -> str:
-    """Translate ``"C0"`` ... ``"C9"`` into hex codes; other colors are returned unchanged."""
-    if len(color) == 2 and color[0] == "C" and color[1].isdigit():
-        return COLOR_CYCLE[int(color[1])]
-    return color
+__all__ = ["COLOR_CYCLE", "DASH_STYLES", "DEFAULT_STYLE", "Style", "color_value"]

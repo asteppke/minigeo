@@ -88,6 +88,18 @@ class Angle(Geometry):
     def vertex(self) -> np.ndarray:
         return self._vertices[0]
 
+    def apply_transform(self, transform) -> None:
+        """
+        Transform the three points, and scale the radius as the transform scales the
+        angle's plane (for an uneven scaling, by the square root of how areas grow there).
+        """
+        u, w = self.rays
+        across = w - np.dot(w, u) * u
+        across = _unit(across) if np.linalg.norm(across) > 1e-12 else _perpendicular(u)
+        linear = transform.matrix[:3, :3]
+        self.radius *= float(np.sqrt(np.linalg.norm(np.cross(linear @ u, linear @ across))))
+        super().apply_transform(transform)
+
     @property
     def rays(self) -> tuple[np.ndarray, np.ndarray]:
         """The unit directions from the vertex towards ``start`` and ``end``."""

@@ -39,21 +39,6 @@ AXIS_NAMES = {"x": 0, "y": 1, "z": 2}
 LIMIT_TOLERANCE = 1e-9
 
 
-def _transform(matrix: np.ndarray) -> Transform:
-    transform = Transform()
-    transform.matrix = np.array(matrix, dtype=float)
-    return transform
-
-
-def _rigid_inverse(matrix: np.ndarray) -> np.ndarray:
-    """The inverse of a rotation plus translation, without a general matrix inversion."""
-    inverse = np.eye(4)
-    rotation = matrix[:3, :3]
-    inverse[:3, :3] = rotation.T
-    inverse[:3, 3] = -rotation.T @ matrix[:3, 3]
-    return inverse
-
-
 class Frame:
     """
     A coordinate system x', y', z' that carries attached geometry and further frames.
@@ -155,7 +140,9 @@ class Frame:
         world = self.pose.matrix
         origin = world[:3, 3] if at is None else np.asarray(at, dtype=float)
         # the child's axes start out along this frame's axes; its origin is at `at`
-        child._mount = _rigid_inverse(world) @ Transform().translate(origin).matrix @ _rotation_only(world)
+        child._mount = (
+            Transform(world).inverse().matrix @ Transform().translate(origin).matrix @ _rotation_only(world)
+        )
         if axis is not None:
             child._axis = world[:3, :3].T @ self._direction(axis)  # world -> mount coordinates
         if limits is not None:
@@ -229,7 +216,7 @@ class Frame:
             motion = Transform().rotate(self._axis, self._value)
         else:
             motion = Transform()
-        return _transform(self._mount @ motion.matrix)
+        return Transform(self._mount @ motion.matrix)
 
     @property
     def pose(self) -> Transform:
@@ -237,7 +224,7 @@ class Frame:
         local = self.local_pose
         if self.parent is None:
             return local
-        return _transform(self.parent.pose.matrix @ local.matrix)
+        return Transform(self.parent.pose.matrix @ local.matrix)
 
     @property
     def origin(self) -> np.ndarray:
@@ -270,7 +257,7 @@ class Frame:
 
     def to_local(self, points) -> np.ndarray:
         """Convert points from world coordinates to this frame's coordinates."""
-        inverse = _transform(_rigid_inverse(self.pose.matrix))
+        inverse = self.pose.inverse()
         return inverse.apply_to_vertices(np.atleast_2d(points)).reshape(np.shape(points))
 
     @property
@@ -334,7 +321,7 @@ class Frame:
         for frame in self.walk():
             now = frame.pose.matrix
             if not np.array_equal(now, frame._synced):
-                step = _transform(now @ _rigid_inverse(frame._synced))
+                step = Transform(now @ Transform(frame._synced).inverse().matrix)
                 for geometry in frame._attached:
                     geometry.apply_transform(step)
                 frame._synced = now
@@ -352,7 +339,7 @@ class Frame:
         if not np.allclose(stretch, np.eye(3)):
             raise ValueError("A frame can only be moved and turned, not scaled, sheared or mirrored.")
         parent = self.parent.pose.matrix if self.parent is not None else np.eye(4)
-        self._mount = _rigid_inverse(parent) @ transform.matrix @ parent @ self._mount
+        self._mount = Transform(parent).inverse().matrix @ transform.matrix @ parent @ self._mount
         self._sync()
 
     def rotate(self, axis, angle: float, in_degrees: bool = True, *, about=None) -> None:

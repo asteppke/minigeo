@@ -119,7 +119,8 @@ Transforms
 ==========
 
 .. autoclass:: Transform
-   :members: translate, rotate, rotate_x, rotate_y, rotate_z, scale, shear, in_frame, apply, apply_to_vertices
+   :members: translate, rotate, rotate_x, rotate_y, rotate_z, scale, shear, in_frame, inverse, copy, apply,
+             apply_to_vertices
 
 .. autofunction:: minigeo.transform.split_rotation
 

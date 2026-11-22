@@ -1,7 +1,5 @@
 """Tests for the user-facing API: names, named sizes, copies, spheres, saving and old names."""
 
-import warnings
-
 import numpy as np
 import pytest
 
@@ -149,56 +147,8 @@ def test_save_unknown_extension():
         Scene().save("scene.jpeg")
 
 
-# ---------------------------------------------------------------- old names keep working
-
-
-@pytest.mark.parametrize(
-    ("old", "args", "new"),
-    [
-        ("BaseBox", ([0, 0, 0], [1, 2, 3]), Box),
-        ("BaseRectangle", ([0, 0, 0], [1, 2]), Rectangle),
-        ("BaseCircle", ([0, 0, 0], [1]), Circle),
-        ("BaseCylinder", ([0, 0, 0], (0.5, 2)), Cylinder),
-        ("BaseCone", ([0, 0, 0], (0.5, 0.2, 1)), Cone),
-        ("BasePoint", ([0, 0, 0],), Point),
-        ("BaseLine", ([0, 0, 0], [1, 0, 0]), Line),
-    ],
-)
-def test_old_names_warn_but_work(old, args, new, monkeypatch):
-    import minigeo.geometry as geo
-
-    monkeypatch.setattr(geo, "_warned", set())
-    with pytest.warns(DeprecationWarning, match=new.__name__):
-        cls = getattr(geo, old)
-    shape = cls(*args)
-    assert isinstance(shape, new)
-
-
-def test_old_dimensions_attribute():
-    from minigeo.geometry import legacy
-
-    np.testing.assert_allclose(legacy.BaseCone([0, 0, 0], (0.5, 0.2, 1)).dimensions, [0.5, 0.2, 1])
-    np.testing.assert_allclose(legacy.BaseBox([0, 0, 0], [1, 2, 3]).dimensions, [1, 2, 3])
-
-
-def test_old_import_style_still_works(monkeypatch):
-    import minigeo.geometry as geo
-    import minigeo.groups as groups
-
-    monkeypatch.setattr(geo, "_warned", set())
-    monkeypatch.setattr(groups, "_warned", set())
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        from minigeo.geometry import BaseBox
-        from minigeo.groups import GeometryGroup
-    assert len(caught) == 2 and all(w.category is DeprecationWarning for w in caught)
-    assert GeometryGroup is Group
-    box = BaseBox([0, 0, 0], dimensions=[1, 1, 1], anchor="bottom")
-    np.testing.assert_allclose(box.center, [0, 0, 0.5])
-
-
-def test_unknown_names_still_fail():
+def test_old_names_are_gone():
     import minigeo.geometry as geo
 
     with pytest.raises(AttributeError):
-        geo.BaseTorus  # noqa: B018
+        geo.BaseBox  # noqa: B018

@@ -16,6 +16,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from ..camera import AXIS_INDEX, Camera
+from ..geometry.mesh import polygon_triangles
 from ..math_labels import plain
 from ..render import Face, Label, Marker, Path, Primitive, bounds
 from ..style import Style, color_value
@@ -142,7 +143,7 @@ def traces_for(primitives: list[Primitive], arrow_size: float) -> list:
         face_traces([p for p in primitives if isinstance(p, Face)])
         + outline_traces(primitives)
         + [t for p in primitives if isinstance(p, Path) for t in path_traces(p, arrow_size)]
-        + [marker_trace(p) for p in primitives if isinstance(p, Marker)]
+        + [marker_trace(p) for p in primitives if isinstance(p, Marker) and p.style.fill != "none"]
         + [label_trace(p) for p in primitives if isinstance(p, Label)]
     )
 
@@ -211,7 +212,7 @@ def scene_layout(camera: Camera, show_axes: bool, low: np.ndarray, high: np.ndar
 
 
 def face_traces(faces: list[Face]) -> list[go.Mesh3d]:
-    """All faces as triangle meshes, one per opacity. Faces are split into triangle fans."""
+    """All faces as triangle meshes, one per opacity (concave faces are cut correctly too)."""
     by_opacity: dict[float, list[Face]] = defaultdict(list)
     for face in faces:
         if face.style.fill != "none":
@@ -223,8 +224,8 @@ def face_traces(faces: list[Face]) -> list[go.Mesh3d]:
         for face in group:
             first = sum(len(p) for p in points)
             points.append(face.points)
-            for k in range(1, len(face.points) - 1):  # faces are convex, so a fan works
-                triangles.append((first, first + k, first + k + 1))
+            for triangle in polygon_triangles(face.points):
+                triangles.append(tuple(first + triangle))
                 colors.append(color_value(face.style.fill))
         x, y, z = np.vstack(points).T
         i, j, k = np.array(triangles).T
@@ -244,7 +245,7 @@ def outline_traces(primitives: list[Primitive]) -> list[go.Scatter3d]:
     """The outlines of all faces, one line trace per look; shared edges are drawn once."""
     segments: dict[tuple, dict[tuple, np.ndarray]] = defaultdict(dict)
     for face in primitives:
-        if not isinstance(face, Face):
+        if not isinstance(face, Face) or face.style.stroke == "none":
             continue
         sides = face.outline
         look = _line_look(face.style)
@@ -256,7 +257,9 @@ def outline_traces(primitives: list[Primitive]) -> list[go.Scatter3d]:
 
 
 def path_traces(path: Path, arrow_size: float) -> list:
-    """A line, plus a cone at its end if it has an arrow tip."""
+    """A line, plus a cone at its end if it has an arrow tip (nothing for ``stroke="none"``)."""
+    if path.style.stroke == "none":
+        return []
     look = _line_look(path.style)
     traces = [_lines_trace([path.points], look)]
     if path.style.arrow:

@@ -101,8 +101,6 @@ Geometry and transforms
    copy = box.copy()                                      # an independent copy
 
 Round shapes take ``segments=`` (default 16), e.g. ``Sphere(position, radius=1, segments=32)``.
-The old names (``BaseBox(position, dimensions=...)``, ``GeometryGroup``, ...) still work but give a
-deprecation warning that names the replacement.
 
 Anchor words refer to a shape's own axes: left/right (x'), front/back (y'), bottom/top (z').
 After rotating a shape, ``shape.anchor("top")`` is still the middle of its own top face.

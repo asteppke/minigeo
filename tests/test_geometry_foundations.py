@@ -216,11 +216,11 @@ def test_line_meets_plane(rng):
     """A line and a plane meet in one point, unless the line runs parallel to the plane."""
     plane = Plane(rng.normal(size=3), rng.normal(size=3))
     start, end = rng.normal(size=(2, 3))
-    meeting = plane.intersect(Line(start, end))
+    (meeting,) = plane.intersect(Line(start, end))
     assert plane.contains(meeting, tolerance=1e-9)
     assert np.allclose(np.cross(meeting - start, end - start), 0)  # on the line
     sideways = np.cross(plane.normal, random_unit(rng))
-    assert plane.intersect((start, start + sideways)) is None
+    assert plane.intersect((start, start + sideways)).shape == (0, 3)
 
 
 # ---------------------------------------------------------------- rotations

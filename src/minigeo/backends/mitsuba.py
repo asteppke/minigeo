@@ -35,7 +35,7 @@ import numpy as np
 from ..camera import Camera
 from ..colors import to_rgb
 from ..geometry import Cylinder, Sphere
-from ..geometry.mesh import triangulate
+from ..geometry.mesh import polygon_triangles, triangulate
 from ..style import Style
 from .raytrace import REFERENCE_WIDTH, RaytracedImage, _Canvas, _Contents, _finish, _Layers, _View
 
@@ -218,8 +218,7 @@ def _shapes(contents: _Contents) -> list[_Shape]:
             key = (surface.owner, surface.style.fill, surface.style.opacity)
             styles[key] = surface.style
             points = surface.points
-            _, triangles = triangulate([list(range(len(points)))])
-            faces.setdefault(key, []).append(points[triangles])
+            faces.setdefault(key, []).append(points[polygon_triangles(points)])
         elif surface.kind == "sphere":
             shapes += _sphere(surface.to_world, surface.part_styles[0], surface.owner)
         else:
@@ -235,7 +234,7 @@ def _shapes(contents: _Contents) -> list[_Shape]:
 def _fine_mesh(unit_shape, to_world: np.ndarray, style: Style, owner: int) -> list[_Shape]:
     """A stretched sphere or cylinder as a fine triangle mesh (Mitsuba's shapes cannot be stretched)."""
     points = unit_shape.local_vertices @ to_world[:3, :3].T + to_world[:3, 3]
-    _, triangles = triangulate(unit_shape.face_indices)
+    _, triangles = triangulate(unit_shape.face_indices, unit_shape.local_vertices)
     return [_Shape(style, owner, points=points, triangles=triangles)]
 
 

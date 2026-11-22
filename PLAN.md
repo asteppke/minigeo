@@ -99,6 +99,20 @@ per point (no rings or blotches).
   faces are triangulated as fans (fine for convex faces). Curves are sampled once; a
   `samples` change means a new `Curve`.
 
+## Settled for 1.0
+
+- `Plane.intersect` behaves like `Shape.intersect` (an `(n, 3)` array, `segment=`), with the
+  infinite plane.
+- Labels belong to the scene (`scene.add(..., label=)`, `scene.label`), not to geometries.
+- `Axis(direction, origin=...)` as `Vector(components, origin=...)`; `about=` takes any anchor.
+- `Transform(matrix)`, `.copy()`, `.inverse()`, `scale(number)`, six-way `shear`.
+- Styles check colors and sizes when made; matplotlib's one-letter colors work everywhere.
+- No deprecated names (`Base*`, `GeometryGroup`) any more.
+- Faces are cut into triangles by ear clipping where they are concave
+  (`geometry.mesh.triangulate`, `polygon_triangles`); fans remain only where they are exact
+  (area vectors, volumes). The painter's sort in `depth.py` still treats faces as convex.
+- Size attributes (`size`, `radius`, `height`) describe shapes as created.
+
 ## Open questions
 
 - Should `t @ shape` return a transformed copy instead of changing the shape in place?

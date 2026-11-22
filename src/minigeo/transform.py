@@ -69,14 +69,59 @@ def split_rotation(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 class Transform:
     """
-    Represents an affine transformation in 3D. The transformation is represented by a 4x4 matrix (homogenous).
+    An affine transformation in 3D, kept as a 4x4 matrix in homogeneous coordinates.
+
+    Transforms are built step by step (``Transform().rotate("z", 30).translate([1, 0, 0])``),
+    combined with ``@``, and applied to geometry with ``t @ shape``.
     """
 
-    def __init__(self):
+    def __init__(self, matrix: np.ndarray | None = None):
         """
-        Initialize the transform with an identity 4x4 matrix.
+        Args:
+            matrix (array-like, optional): A 4x4 matrix to start from (copied), whose last
+                row is ``[0, 0, 0, 1]``. Default: the identity, which changes nothing.
+
+        Example:
+            >>> Transform()                      # the identity
+            >>> Transform(other.matrix @ m)      # from a matrix
         """
-        self.matrix = np.eye(4)
+        if matrix is None:
+            self.matrix = np.eye(4)
+            return
+        matrix = np.array(matrix, dtype=float)
+        if matrix.shape != (4, 4) or not np.allclose(matrix[3], [0, 0, 0, 1]):
+            raise ValueError("A transform needs a 4x4 matrix whose last row is [0, 0, 0, 1].")
+        self.matrix = matrix
+
+    def copy(self) -> Transform:
+        """An independent copy: changing one does not change the other."""
+        return Transform(self.matrix)
+
+    def inverse(self) -> Transform:
+        """
+        The transform that undoes this one, as a new transform.
+
+        Raises:
+            ValueError: If the transform flattens space (e.g. a scaling by 0) and cannot be undone.
+
+        Example:
+            >>> t = Transform().rotate("z", 30).translate([1, 0, 0])
+            >>> np.allclose((t.inverse() @ t).matrix, np.eye(4))
+            True
+        """
+        linear, offset = self.matrix[:3, :3], self.matrix[:3, 3]
+        inverse = np.eye(4)
+        if np.allclose(linear.T @ linear, np.eye(3)):  # a rotation (or mirroring): exact and cheap
+            inverse[:3, :3] = linear.T
+        elif abs(np.linalg.det(linear)) < 1e-15:
+            raise ValueError("This transform flattens space and cannot be undone.")
+        else:
+            inverse[:3, :3] = np.linalg.inv(linear)
+        inverse[:3, 3] = -inverse[:3, :3] @ offset
+        return Transform(inverse)
+
+    def __repr__(self) -> str:
+        return f"Transform(\n{np.array2string(self.matrix, precision=4, suppress_small=True)})"
 
     def apply_to_vertex(self, vertex: np.ndarray) -> np.ndarray:
         """
@@ -117,37 +162,65 @@ class Transform:
         self.matrix = T @ self.matrix
         return self
 
-    def scale(self, factors: np.ndarray) -> Transform:
+    def scale(self, factors: float | np.ndarray) -> Transform:
         """
         Applies scaling along each axis.
 
         Args:
-            factors (np.ndarray): A 3-element array for scaling factors.
+            factors: One factor per axis, or one number for all three.
 
         Returns:
             Transform: Self to allow method chaining.
+
+        Example:
+            >>> Transform().scale(2)            # twice as large
+            >>> Transform().scale([1, 1, -1])   # mirrored in the xy plane
         """
         S = np.eye(4)
-        S[0, 0], S[1, 1], S[2, 2] = factors
+        S[0, 0], S[1, 1], S[2, 2] = np.broadcast_to(np.asarray(factors, dtype=float), (3,))
         self.matrix = S @ self.matrix
         return self
 
-    def shear(self, factors: np.ndarray) -> Transform:
+    def shear(
+        self,
+        factors=None,
+        *,
+        xy: float = 0.0,
+        yx: float = 0.0,
+        xz: float = 0.0,
+        zx: float = 0.0,
+        yz: float = 0.0,
+        zy: float = 0.0,
+    ) -> Transform:
         """
-        Applies shearing in the xy and xz planes.
+        Applies shearing: each coordinate is shifted in proportion to another one.
+
+        ``xy`` is how much x is shifted per unit of y, ``zy`` how much z is shifted per unit
+        of y, and so on.
 
         Args:
-            factors (np.ndarray): A 4-element array ``(xy, yx, xz, zx)``, where e.g. ``xy``
-                is how much x is shifted per unit of y.
+            factors: Optionally all factors in a row: ``(xy, yx, xz, zx)`` or
+                ``(xy, yx, xz, zx, yz, zy)``.
+            xy, yx, xz, zx, yz, zy: Single factors by name (when ``factors`` is not given).
 
         Returns:
             Transform: Self to allow method chaining.
+
+        Example:
+            >>> Transform().shear(xz=0.5)      # x leans over by half the height
+            >>> Transform().shear(yz=0.2, zy=0.1)
         """
-        if len(factors) != 4:
-            raise ValueError(f"shear expects 4 factors (xy, yx, xz, zx), got {len(factors)}")
+        if factors is not None:
+            factors = [float(f) for f in factors]
+            if len(factors) not in (4, 6):
+                raise ValueError(
+                    f"shear expects 4 factors (xy, yx, xz, zx) or 6 (... yz, zy), got {len(factors)}."
+                )
+            xy, yx, xz, zx, yz, zy = [*factors, 0.0, 0.0][:6]
         S = np.eye(4)
-        S[0, 1], S[1, 0] = factors[0], factors[1]
-        S[0, 2], S[2, 0] = factors[2], factors[3]
+        S[0, 1], S[1, 0] = xy, yx
+        S[0, 2], S[2, 0] = xz, zx
+        S[1, 2], S[2, 1] = yz, zy
         self.matrix = S @ self.matrix
         return self
 
@@ -319,7 +392,5 @@ class Transform:
         """
         # TODO: Think about whether `t @ shape` should return a transformed copy instead.
         if isinstance(other, Transform):
-            composed = Transform()
-            composed.matrix = self.matrix @ other.matrix
-            return composed
+            return Transform(self.matrix @ other.matrix)
         return self.apply(other)

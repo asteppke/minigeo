@@ -52,7 +52,8 @@ Planes
 
 A :class:`~minigeo.Plane` is given by a point and a normal, or by three points. It is drawn
 as a translucent square, but calculates as an infinite plane: ``distance_to``, ``project``
-and ``intersect``.
+and ``intersect``. Like every shape's (see below), ``intersect`` returns an array of points:
+here one point, or none if the line runs parallel to the plane.
 
 .. minigeo-example::
 
@@ -71,7 +72,7 @@ and ``intersect``.
 
    tilted = Plane.through([0, 0, 0], [1, 0, 0.5], [0, 1, 0])
    ray = Line([-0.5, 0.2, 1.5], [0.8, 0.5, -0.5])
-   hit = tilted.intersect(ray)
+   hit = tilted.intersect(ray)[0]
 
    scene = Scene()
    scene.add(tilted, fill="gold")
@@ -86,8 +87,8 @@ Lines through shapes
 ``shape.intersect(line)`` returns the points where a line meets a shape, sorted along the
 line: usually where it enters and where it leaves. Spheres and cylinders are met exactly,
 as the round shapes they stand for; all other shapes at the flat faces they are drawn
-with. Like a plane, a shape takes the line as infinite; ``segment=True`` keeps only the
-points between its start and end. Polylines and curves work too, piece by piece.
+with. The line counts as infinite; ``segment=True`` keeps only the points between its start
+and end. Polylines and curves work too, piece by piece.
 
 .. minigeo-example::
 

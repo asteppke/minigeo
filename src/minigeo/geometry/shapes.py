@@ -3,8 +3,9 @@ The concrete shapes: flat ones (polygon, rectangle, circle) and solids (box, cyl
 sphere).
 
 Sizes are named arguments, e.g. ``Box(position, size=(2, 1, 0.5))`` or
-``Cylinder(position, radius=0.5, height=2)``. They describe the shape as created; scaling
-transforms change the vertices but not these numbers.
+``Cylinder(position, radius=0.5, height=2)``. The attributes ``size``, ``radius`` and
+``height`` describe the shape *as created*: scaling transforms change the vertices but not
+these numbers (``repr`` then says so). Measure a scaled shape from its vertices or anchors.
 
 Each shape lists its faces as vertex indices in ``_face_layout`` (see :attr:`Shape.face_indices`).
 The vertices of every face go counter-clockwise when seen from outside the shape, so the
@@ -85,7 +86,7 @@ class Rectangle(Shape):
         return [[0, 1, 2, 3]]
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__} at {self.center} of size {self.size}"
+        return f"{type(self).__name__} at {self.center} of size {self.size}{self._sizes_note()}"
 
 
 class Circle(Shape):
@@ -115,7 +116,7 @@ class Circle(Shape):
         return [list(range(len(self._local_vertices)))]
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__} at {self.center} with radius {self.radius}"
+        return f"{type(self).__name__} at {self.center} with radius {self.radius}{self._sizes_note()}"
 
 
 class Box(Shape):
@@ -171,7 +172,7 @@ class Box(Shape):
         ]
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__} at {self.center} of size {self.size}"
+        return f"{type(self).__name__} at {self.center} of size {self.size}{self._sizes_note()}"
 
 
 class Cylinder(Shape):
@@ -265,7 +266,10 @@ class Cylinder(Shape):
         return self._faces_from(self.top_face_indices)
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__} at {self.center} with radius {self.radius} and height {self.height}"
+        return (
+            f"{type(self).__name__} at {self.center} with radius {self.radius} and height {self.height}"
+            f"{self._sizes_note()}"
+        )
 
 
 class Cone(Cylinder):
@@ -319,7 +323,7 @@ class Cone(Cylinder):
     def __repr__(self) -> str:
         return (
             f"{type(self).__name__} at {self.center} with radius {self.radius} (bottom), "
-            f"{self.top_radius} (top) and height {self.height}"
+            f"{self.top_radius} (top) and height {self.height}{self._sizes_note()}"
         )
 
 
@@ -381,4 +385,4 @@ class Sphere(Shape):
         return np.zeros((0, 2), dtype=int)
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__} at {self.center} with radius {self.radius}"
+        return f"{type(self).__name__} at {self.center} with radius {self.radius}{self._sizes_note()}"

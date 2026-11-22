@@ -81,7 +81,7 @@ class Mesh(Shape):
     @property
     def triangles(self) -> np.ndarray:
         """The faces cut into triangles, as an ``(m, 3)`` array of vertex indices."""
-        return triangulate(self.face_indices)[1]
+        return triangulate(self.face_indices, self._local_vertices)[1]
 
     @property
     def volume(self) -> float:
@@ -143,11 +143,13 @@ def encloses(faces: list[list[int]]) -> bool:
     return len(forward) == len(starts) and np.array_equal(forward, backward)
 
 
-def triangulate(faces: list[list[int]]) -> tuple[np.ndarray, np.ndarray]:
+def fan(faces: list[list[int]]) -> tuple[np.ndarray, np.ndarray]:
     """
     Cut faces into triangles that fan out from each face's first corner.
 
-    This is exact for convex faces, which most mesh faces are.
+    The triangles cover a face exactly only if it is convex, but their (signed) areas and
+    normals always add up to the face's, so a fan is enough for :func:`area_vectors` and
+    :func:`signed_volume`. To draw or hit faces, use :func:`triangulate`.
 
     Returns:
         For each triangle the face it came from, and the ``(m, 3)`` vertex indices.
@@ -160,13 +162,127 @@ def triangulate(faces: list[list[int]]) -> tuple[np.ndarray, np.ndarray]:
     return np.array(owners, dtype=int), np.array(triangles, dtype=int).reshape(-1, 3)
 
 
+def triangulate(faces: list[list[int]], vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Cut flat faces into triangles that cover them exactly, also concave ones.
+
+    Convex faces (most of them) fan out from their first corner; concave faces are cut by
+    ear clipping (:func:`polygon_triangles`).
+
+    Args:
+        faces: For each face, the indices of its corners in order around it.
+        vertices: The ``(n, 3)`` points the indices refer to.
+
+    Returns:
+        For each triangle the face it came from, and the ``(m, 3)`` vertex indices.
+    """
+    vertices = np.asarray(vertices, dtype=float)
+    owners, triangles = [np.empty(0, dtype=int)], [np.empty((0, 3), dtype=int)]
+    by_size: dict[int, list[int]] = {}
+    for k, face in enumerate(faces):
+        by_size.setdefault(len(face), []).append(k)
+    for size, numbers in by_size.items():
+        numbers = np.array(numbers)
+        corners = np.array([faces[k] for k in numbers], dtype=int)  # (m, size)
+        convex = is_convex(vertices[corners])
+        local = np.array([[0, i, i + 1] for i in range(1, size - 1)])  # the fan
+        owners.append(np.repeat(numbers[convex], size - 2))
+        triangles.append(corners[convex][:, local].reshape(-1, 3))
+        for k, face in zip(numbers[~convex], corners[~convex], strict=True):
+            pieces = face[polygon_triangles(vertices[face])]
+            owners.append(np.full(len(pieces), k))
+            triangles.append(pieces)
+    return np.concatenate(owners), np.concatenate(triangles)
+
+
+def is_convex(polygons: np.ndarray) -> np.ndarray:
+    """
+    For ``(m, k, 3)`` corner points of flat polygons: whether each one is convex, i.e. turns
+    the same way at every corner (straight corners count as convex).
+    """
+    following = np.roll(polygons, -1, axis=1)
+    normal = np.cross(polygons, following).sum(axis=1)  # Newell's method, (m, 3)
+    edges = following - polygons
+    turns = np.einsum("mkj,mj->mk", np.cross(edges, np.roll(edges, -1, axis=1)), normal)
+    scale = np.linalg.norm(edges, axis=2) * np.linalg.norm(np.roll(edges, -1, axis=1), axis=2)
+    return np.all(turns >= -1e-9 * scale * np.linalg.norm(normal, axis=1)[:, None], axis=1)
+
+
+def polygon_triangles(points: np.ndarray) -> np.ndarray:
+    """
+    Triangles that cover a flat polygon, concave or not, as ``(k - 2, 3)`` corner indices.
+
+    Ear clipping: a corner whose triangle with its two neighbours turns the right way and
+    contains no other corner is an *ear*; it is cut off, and so on until a triangle is left.
+
+    Example:
+        >>> polygon_triangles(np.array([[0, 0, 0], [2, 0, 0], [1, 0.5, 0], [2, 1, 0], [0, 1, 0]]))
+        array([[0, 1, 2],
+               [4, 0, 2],
+               [2, 3, 4]])
+    """
+    points = np.asarray(points, dtype=float)
+    count = len(points)
+    fan_triangles = np.array([[0, i, i + 1] for i in range(1, count - 1)], dtype=int).reshape(-1, 3)
+    normal = np.cross(points, np.roll(points, -1, axis=0)).sum(axis=0)
+    if count <= 3 or np.linalg.norm(normal) < 1e-300 or is_convex(points[np.newaxis])[0]:
+        return fan_triangles
+
+    # flat coordinates in the polygon's plane, turning counter-clockwise
+    normal /= np.linalg.norm(normal)
+    first = points[1] - points[0]
+    first -= (first @ normal) * normal
+    first = first / np.linalg.norm(first) if np.linalg.norm(first) > 0 else _perpendicular(normal)
+    flat = points @ np.column_stack([first, np.cross(normal, first)])
+    tolerance = 1e-12 * float(np.ptp(flat, axis=0).max()) ** 2
+
+    def turn(a, b, c):  # twice the signed area of the triangle a, b, c
+        return (flat[b, 0] - flat[a, 0]) * (flat[c, 1] - flat[a, 1]) - (flat[b, 1] - flat[a, 1]) * (
+            flat[c, 0] - flat[a, 0]
+        )
+
+    remaining = list(range(count))
+    triangles = []
+    while len(remaining) > 3:
+        for position in range(len(remaining)):
+            a, b, c = remaining[position - 1], remaining[position], remaining[(position + 1) % len(remaining)]
+            if turn(a, b, c) <= tolerance:
+                continue  # a corner that turns the wrong way (or not at all)
+            others = [i for i in remaining if i not in (a, b, c)]
+            inside = [
+                turn(a, b, i) >= -tolerance and turn(b, c, i) >= -tolerance and turn(c, a, i) >= -tolerance
+                for i in others
+            ]
+            if any(inside):
+                continue
+            triangles.append([a, b, c])
+            remaining.pop(position)
+            break
+        else:  # no ear: the outline crosses itself; fan out the rest
+            triangles += [
+                [remaining[0], remaining[i], remaining[i + 1]] for i in range(1, len(remaining) - 1)
+            ]
+            remaining = []
+            break
+    if remaining:
+        triangles.append(remaining)
+    return np.array(triangles, dtype=int)
+
+
+def _perpendicular(vector: np.ndarray) -> np.ndarray:
+    """Some unit vector perpendicular to ``vector``."""
+    helper = np.eye(3)[np.argmin(np.abs(vector))]
+    across = np.cross(vector, helper)
+    return across / np.linalg.norm(across)
+
+
 def area_vectors(vertices: np.ndarray, faces: list[list[int]]) -> np.ndarray:
     """
     For each face, its normal times twice its area.
 
     The cross products of a triangle fan add up to this for any face, even a non-convex one.
     """
-    owners, triangles = triangulate(faces)
+    owners, triangles = fan(faces)
     a, b, c = (vertices[triangles[:, i]] for i in range(3))
     result = np.zeros((len(faces), 3))
     np.add.at(result, owners, np.cross(b - a, c - a))
@@ -175,6 +291,6 @@ def area_vectors(vertices: np.ndarray, faces: list[list[int]]) -> np.ndarray:
 
 def signed_volume(vertices: np.ndarray, faces: list[list[int]]) -> float:
     """The volume enclosed by closed faces: positive when they point outward."""
-    _, triangles = triangulate(faces)
+    _, triangles = fan(faces)
     a, b, c = (vertices[triangles[:, i]] for i in range(3))
     return float(np.einsum("ij,ij->i", a, np.cross(b, c)).sum() / 6)

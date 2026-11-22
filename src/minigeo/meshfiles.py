@@ -83,7 +83,7 @@ def _read_obj(path: FilePath) -> tuple[np.ndarray, dict[str, list[list[int]]]]:
     vertices: list[list[float]] = []
     faces: list[tuple[str | None, str | None, list[int]]] = []  # object, group, corners
     current = {"o": None, "g": None}
-    for number, line in enumerate(path.read_text(errors="replace").splitlines(), start=1):
+    for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
         words = line.split("#", 1)[0].split()
         if not words:
             continue
@@ -239,13 +239,13 @@ def _write_obj(path: FilePath, parts: list[_Part]) -> None:
                 lines.append(f"usemtl {materials[key]}")
             lines += ["f " + " ".join(str(offset + k) for k in face) for face in faces]
         offset += len(points)
-    path.write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     if materials:
         mtl = ["# written by minigeo"]
         for ((r, g, b), opacity), name in materials.items():
             mtl += [f"newmtl {name}", f"Kd {r:.4g} {g:.4g} {b:.4g}", f"d {opacity:.4g}", ""]
-        path.with_suffix(".mtl").write_text("\n".join(mtl))
+        path.with_suffix(".mtl").write_text("\n".join(mtl), encoding="utf-8")
 
 
 def _obj_name(name: str) -> str:
@@ -257,7 +257,7 @@ def _write_stl(path: FilePath, parts: list[_Part]) -> None:
     corners = []
     for part in parts:
         shape = part.geometry
-        _, triangles = triangulate(shape.face_indices)
+        _, triangles = triangulate(shape.face_indices, shape.vertices)
         corners.append(shape.vertices[triangles])
     corners = np.concatenate(corners)
 

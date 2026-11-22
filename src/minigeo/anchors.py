@@ -114,10 +114,13 @@ def resolve_pivot(about: np.ndarray | str | None, owner) -> np.ndarray | None:
     Turn the ``about`` argument of ``rotate`` into a point.
 
     ``None`` stays ``None`` (rotate about the origin), ``"center"`` becomes ``owner.center``,
-    and anything else is treated as a point.
+    any other name is one of the owner's anchors (e.g. ``"bottom"``), and anything else is
+    treated as a point.
     """
     if isinstance(about, str):
-        if about != "center":
+        if about == "center":
+            return owner.center
+        if not hasattr(owner, "anchor"):
             raise ValueError(f"Unknown pivot {about!r}; use 'center' or a point.")
-        return owner.center
+        return owner.anchor(about)
     return about

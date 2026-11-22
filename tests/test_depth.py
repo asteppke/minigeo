@@ -51,11 +51,11 @@ def test_small_object_on_a_large_table_is_drawn_after_the_tabletop():
 
 def test_box_behind_is_drawn_first():
     scene = Scene()
-    scene.add(Box([0, 0, 0], size=[1, 1, 1]), fill="near")
-    scene.add(Box([-5, 5, 0], size=[1, 1, 1]), fill="far")  # further from a viewer at azim -60
+    scene.add(Box([0, 0, 0], size=[1, 1, 1]), fill="green")
+    scene.add(Box([-5, 5, 0], size=[1, 1, 1]), fill="red")  # further from a viewer at azim -60
     primitives, order = order_of(scene)
-    far = position_in_order(primitives, order, lambda p: p.style.fill == "far")
-    near = position_in_order(primitives, order, lambda p: p.style.fill == "near")
+    far = position_in_order(primitives, order, lambda p: p.style.fill == "red")
+    near = position_in_order(primitives, order, lambda p: p.style.fill == "green")
     assert max(far) < min(near)
 
 

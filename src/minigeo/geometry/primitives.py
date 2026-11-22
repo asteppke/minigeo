@@ -9,56 +9,75 @@ from .base import Geometry
 
 
 class Point(Geometry):
-    """
-    Represents a single 3D point or vertex.
-    """
+    """A single point, drawn as a dot."""
 
-    def __init__(self, position: np.ndarray, label: str | None = None):
+    def __init__(self, position: np.ndarray):
         """
-        Initialize a single point.
-
         Args:
-            position (np.ndarray): The position of the point.
-            label (Optional[str]): An optional label.
+            position (array-like): Where the point is.
+
+        Example:
+            >>> scene.add(Point([0, 0, 1]), label="P")
         """
-        self.position = np.array(position)
-        self.label = label if label is not None else ""
+        self.position = np.asarray(position, dtype=float).copy()
 
     @property
     def vertex(self) -> np.ndarray:
-        """Return the position vertex."""
+        """The position, the same as :attr:`position`."""
         return self.position
 
     @vertex.setter
     def vertex(self, value: np.ndarray):
-        self.position = value
+        self.position = np.asarray(value, dtype=float).copy()
 
     @property
-    def vertices(self) -> np.array:
+    def vertices(self) -> np.ndarray:
         return np.reshape(self.position, (1, 3))
 
     @vertices.setter
     def vertices(self, value):
-        self.position = value.flatten()
+        self.position = np.asarray(value, dtype=float).reshape(3).copy()
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__} at {self.position}"
 
 
 class Line(Geometry):
+    """
+    A straight line segment from ``start`` to ``end``.
+
+    ``start`` and ``end`` are views of :attr:`vertices`, so changing one changes the other.
+
+    Example:
+        >>> scene.add(Line([0, 0, 0], [1, 1, 0]), dash="dashed", label="diagonal")
+    """
+
     label_anchor = "midway"
 
-    def __init__(
-        self,
-        start: np.ndarray,
-        end: np.ndarray,
-        label: str | None = None,
-    ):
+    def __init__(self, start: np.ndarray, end: np.ndarray):
+        """
+        Args:
+            start, end (array-like): The two ends.
+        """
+        self._vertices = np.array([start, end], dtype=float)
 
-        self.start = np.array(start)
-        self.end = np.array(end)
-        self.label = label if label is not None else ""
-        self._vertices = np.array([self.start, self.end])
+    @property
+    def start(self) -> np.ndarray:
+        """The first end (a view: changing it moves the line)."""
+        return self._vertices[0]
+
+    @start.setter
+    def start(self, value):
+        self._vertices[0] = value
+
+    @property
+    def end(self) -> np.ndarray:
+        """The second end (a view: changing it moves the line)."""
+        return self._vertices[1]
+
+    @end.setter
+    def end(self, value):
+        self._vertices[1] = value
 
     @property
     def vertices(self) -> np.ndarray:
@@ -66,9 +85,7 @@ class Line(Geometry):
 
     @vertices.setter
     def vertices(self, value: np.ndarray):
-        self._vertices = value
-        self.start = value[0]
-        self.end = value[1]
+        self._vertices = np.array(value, dtype=float).reshape(2, 3)
 
     @property
     def edges(self) -> np.ndarray:
@@ -96,34 +113,38 @@ class Axis(Geometry):
     """
     An axis: a segment from ``origin`` along a unit ``direction``, drawn as an arrow by default.
 
-    Unlike a :class:`Line`, it keeps its direction as a unit vector, which stays up to
-    date when the axis is transformed.
+    Unlike a :class:`Line`, it is given by a direction and a length; ``origin`` and
+    ``direction`` stay up to date when the axis is transformed.
     """
 
-    def __init__(
-        self,
-        direction: np.ndarray,
-        position: np.ndarray | None = None,
-        *,
-        length: float = 1.0,
-        label: str | None = None,
-    ):
+    def __init__(self, direction: np.ndarray, origin: np.ndarray | None = None, *, length: float = 1.0):
         """
         Args:
             direction (array-like): The direction; only its direction matters, not its length.
-            position (array-like, optional): Where the axis starts (default: the origin).
+            origin (array-like, optional): Where the axis starts (default: the origin),
+                as for a :class:`Vector`.
             length (float): How long the axis is drawn.
-            label (str, optional): An optional name.
 
         Example:
-            >>> Axis([0, 0, 1], position=[1, 0, 0], length=2)  # from (1, 0, 0) up to (1, 0, 2)
+            >>> Axis([0, 0, 1], origin=[1, 0, 0], length=2)  # from (1, 0, 0) up to (1, 0, 2)
         """
         direction = np.asarray(direction, dtype=float)
         norm = np.linalg.norm(direction)
-        self.direction = direction / norm if norm else direction
-        self.origin = np.asarray(position, dtype=float) if position is not None else np.zeros(3)
-        self.label = label if label is not None else ""
-        self._vertices = np.array([self.origin, self.origin + self.direction * length])
+        self._direction = direction / norm if norm else direction  # kept for zero lengths
+        start = np.zeros(3) if origin is None else np.asarray(origin, dtype=float)
+        self._vertices = np.array([start, start + self._direction * length])
+
+    @property
+    def origin(self) -> np.ndarray:
+        """Where the axis starts."""
+        return self._vertices[0]
+
+    @property
+    def direction(self) -> np.ndarray:
+        """The unit direction of the axis."""
+        along = self._vertices[1] - self._vertices[0]
+        norm = np.linalg.norm(along)
+        return along / norm if norm else self._direction
 
     @property
     def length(self) -> float:
@@ -132,23 +153,17 @@ class Axis(Geometry):
 
     @property
     def vertices(self) -> np.ndarray:
-        """Return the current endpoints (vertices) of the axis."""
+        """The two ends of the axis segment."""
         return self._vertices
 
     @vertices.setter
     def vertices(self, value: np.ndarray):
-        """Set the endpoints; origin and direction are updated to match."""
-        self._vertices = np.asarray(value)
-        self.origin = self._vertices[0]
-        vec = self._vertices[1] - self._vertices[0]
-        norm = np.linalg.norm(vec)
-        self.direction = vec / norm if norm else vec
+        self._vertices = np.array(value, dtype=float).reshape(2, 3)
+        self._direction = self.direction
 
     @property
     def edges(self) -> np.ndarray:
-        """
-        For an axis, the edge is defined by the line connecting its two endpoints.
-        """
+        """For an axis, the edge is the segment between its two ends."""
         return self.vertices
 
     def anchor(self, name: str | float = "midway") -> np.ndarray:
@@ -206,13 +221,13 @@ class Vector(Line):
 
     @property
     def origin(self) -> np.ndarray:
-        """Where the arrow starts."""
-        return np.asarray(self.start, dtype=float)
+        """Where the arrow starts (the same as :attr:`start`)."""
+        return self.start.copy()
 
     @property
     def components(self) -> np.ndarray:
         """The three components (from the origin to the tip)."""
-        return np.asarray(self.end, dtype=float) - self.origin
+        return self.end - self.start
 
     @property
     def length(self) -> float:
@@ -252,11 +267,22 @@ class Vector(Line):
             raise ValueError("Cannot project onto a zero vector.")
         return Vector(np.dot(self.components, direction) / squared * direction, origin=self.origin)
 
+    #: Lets ``numpy_array + vector`` use :meth:`__radd__` instead of an element-wise numpy sum.
+    __array_ufunc__ = None
+
     def __add__(self, other) -> Vector:
         return Vector(self.components + _components(other), origin=self.origin)
 
+    def __radd__(self, other) -> Vector:
+        """``[1, 2, 3] + v``: the sum, starting at this vector's origin."""
+        return self + other
+
     def __sub__(self, other) -> Vector:
         return Vector(self.components - _components(other), origin=self.origin)
+
+    def __rsub__(self, other) -> Vector:
+        """``[1, 2, 3] - v``: the difference, starting at this vector's origin."""
+        return Vector(_components(other) - self.components, origin=self.origin)
 
     def __mul__(self, factor: float) -> Vector:
         return Vector(self.components * float(factor), origin=self.origin)

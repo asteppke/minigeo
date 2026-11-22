@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from minigeo import Angle, Box, Dimension, Line, Plane, Scene, Transform, Vector
+from minigeo import Angle, Axis, Box, Dimension, Line, Plane, Polyline, Scene, Transform, Vector
 from minigeo.render import Face, Label, Path
 
 X, Y, Z = np.eye(3)
@@ -103,10 +103,26 @@ def test_plane_through_three_points():
 
 def test_plane_line_intersection():
     plane = Plane([0, 0, 2], normal=Z)
-    np.testing.assert_allclose(plane.intersect(Line([1, 1, 0], [1, 1, 1])), [1, 1, 2])  # beyond the segment
-    np.testing.assert_allclose(plane.intersect(Vector([0, 0, 1], origin=[3, 0, 0])), [3, 0, 2])
-    np.testing.assert_allclose(plane.intersect(([0, 0, 0], [1, 0, 4])), [0.5, 0, 2])
-    assert plane.intersect(Line([0, 0, 0], [1, 0, 0])) is None  # parallel
+    np.testing.assert_allclose(plane.intersect(Line([1, 1, 0], [1, 1, 1])), [[1, 1, 2]])  # beyond the segment
+    assert plane.intersect(Line([1, 1, 0], [1, 1, 1]), segment=True).shape == (0, 3)
+    np.testing.assert_allclose(plane.intersect(Vector([0, 0, 1], origin=[3, 0, 0])), [[3, 0, 2]])
+    np.testing.assert_allclose(plane.intersect(([0, 0, 0], [1, 0, 4])), [[0.5, 0, 2]])
+    np.testing.assert_allclose(plane.intersect(Axis([0, 0, 1], origin=[5, 5, 0])), [[5, 5, 2]])
+    zigzag = Polyline([[0, 0, 0], [0, 0, 3], [1, 0, 3], [1, 0, 0]])
+    np.testing.assert_allclose(plane.intersect(zigzag), [[0, 0, 2], [1, 0, 2]])
+    np.testing.assert_allclose(plane.intersect(Line([9, 9, 0], [9, 9, 1])), [[9, 9, 2]])  # beyond the patch
+    assert plane.intersect(Line([0, 0, 0], [1, 0, 0])).shape == (0, 3)  # parallel
+
+
+def test_mirrored_plane_turns_its_normal():
+    plane = Plane([0, 0, 1], normal=Z)
+    Transform().scale([1, 1, -1]) @ plane
+    np.testing.assert_allclose(plane.normal, -Z, atol=1e-12)
+    np.testing.assert_allclose(plane.center, [0, 0, -1])
+    assert plane.distance_to([0, 0, -3]) == pytest.approx(2)
+    from minigeo.geometry import face_normal
+
+    np.testing.assert_allclose(face_normal(plane.faces[0]), plane.normal, atol=1e-12)
 
 
 def test_plane_normal_vector_and_default_look():

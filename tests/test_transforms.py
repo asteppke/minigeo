@@ -247,7 +247,7 @@ def test_group_rotate_about_center_keeps_arrangement():
 
 
 def test_axis_length():
-    axis = Axis([0, 0, 5], position=[1, 0, 0], length=2)
+    axis = Axis([0, 0, 5], origin=[1, 0, 0], length=2)
     np.testing.assert_allclose(axis.direction, [0, 0, 1])
     np.testing.assert_allclose(axis.vertices, [[1, 0, 0], [1, 0, 2]])
     Transform().scale([1, 1, 3]) @ axis

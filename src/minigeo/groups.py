@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import warnings
 
 import numpy as np
 
@@ -53,7 +52,9 @@ class Group:
 
     @property
     def vertices(self) -> np.ndarray:
-        """Return the vertices of the geometry."""
+        """The vertices of all members, one after the other (``(0, 3)`` for an empty group)."""
+        if not self.geometries:
+            return np.empty((0, 3))
         return np.concatenate([g.vertices for g in self.geometries])
 
     @vertices.setter
@@ -109,15 +110,3 @@ class Group:
         """
         pivot = resolve_pivot(about, self)
         self.apply_transform(Transform().rotate(axis, angle, in_degrees, about=pivot))
-
-
-_warned: set[str] = set()  # warn once; `from ... import` looks names up twice
-
-
-def __getattr__(name: str):
-    if name == "GeometryGroup":
-        if name not in _warned:
-            _warned.add(name)
-            warnings.warn("GeometryGroup is deprecated; use Group.", DeprecationWarning, stacklevel=2)
-        return Group
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

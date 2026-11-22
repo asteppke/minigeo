@@ -310,7 +310,7 @@ def test_scene_render_and_save(tmp_path):
     from PIL import Image
 
     assert Image.open(tmp_path / "box.png").size[0] == 120
-    with pytest.raises(ValueError, match="raytrace"):
+    with pytest.raises(ValueError, match="svg backend cannot write .png"):
         scene.save(tmp_path / "box.png", backend="svg")
 
 
