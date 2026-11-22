@@ -10,17 +10,17 @@ authors = [{ name = "Alexander Steppke" }]
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
-dependencies = ["numpy>=1.23"]
+dependencies = ["numpy>=1.24"]
 dynamic = ["version"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "Framework :: Jupyter",
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 
 [project.optional-dependencies]
-mpl = ["matplotlib>=3.6"]
+mpl = ["matplotlib>=3.8"]
 svg = ["svg.py>=1.4"]
 plotly = ["plotly>=5", "nbformat>=4.2"]  # plotly needs nbformat to show figures in notebooks
 ray = ["pillow>=10.1"]  # text and image files for the ray tracer
