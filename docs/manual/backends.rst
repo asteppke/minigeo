@@ -92,6 +92,34 @@ and stores the code.
 The ray tracer can also draw in other *looks*, for diagrams rather than photos; see
 :doc:`looks`.
 
+Mitsuba 3
+=========
+
+`Mitsuba 3 <https://www.mitsuba-renderer.org/>`_ is a physically based renderer: light
+comes from the surroundings and bounces between surfaces, so corners darken softly and
+shadows have soft edges. The backend is optional and not part of ``minigeo[all]``; install
+it with ``pip install "minigeo[mitsuba]"``.
+
+.. code-block:: python
+
+   image = scene.render("mitsuba", width=800, spp=256)
+   image.save("table.png")
+   scene.save("table.png", backend="mitsuba", light="sky")
+
+Spheres and cylinders become Mitsuba's exact shapes, and all other faces triangle meshes.
+Colors are converted to the linear light values Mitsuba works with, and back. The camera
+and view are the ray tracer's, so both give the same picture with the same ``elev``,
+``azim`` and ``width``; lines, points and labels are drawn by the ray tracer's code too,
+hidden behind surfaces using a depth image from Mitsuba.
+
+* ``light="sun"`` (the default) lights the scene from the upper left, as the ray tracer
+  does, plus soft light from the surroundings; ``light="sky"`` uses only the surroundings.
+* ``spp`` is the number of light paths per pixel: more means less noise and a longer
+  wait (64, the default, takes a few seconds for a 500-pixel picture).
+* Mitsuba chooses a *variant* (CPU or GPU) once for the whole Python process. minigeo uses
+  the variant already chosen, otherwise ``"scalar_rgb"``, which runs on every CPU;
+  ``variant="cuda_ad_rgb"`` uses an NVIDIA graphics card.
+
 matplotlib
 ==========
 
@@ -159,7 +187,9 @@ Saving
 
 ``scene.save`` chooses the backend from the file extension: ``.svg`` (SVG), ``.html``
 (plotly), ``.tex`` (TikZ), ``.png`` and ``.pdf`` (matplotlib). ``backend="raytrace"`` saves
-a ray traced image instead, and ``backend="tikz"`` a PDF compiled from TikZ. Options such as ``elev`` or ``width`` are passed on to the backend.
+a ray traced image instead (``backend="mitsuba"`` one rendered by Mitsuba), and
+``backend="tikz"`` a PDF compiled from TikZ. Options such as ``elev`` or ``width`` are passed
+on to the backend.
 
 .. code-block:: python
 

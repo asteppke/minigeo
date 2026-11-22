@@ -37,6 +37,7 @@ BACKENDS = {
     "plotly": "minigeo.backends.plotly",
     "raytrace": "minigeo.backends.raytrace",
     "tikz": "minigeo.backends.tikz",
+    "mitsuba": "minigeo.backends.mitsuba",
 }
 
 
@@ -343,8 +344,9 @@ class Scene:
             backend: ``"matplotlib"`` (returns the 3D axes), ``"svg"`` (returns an
                 :class:`~minigeo.backends.svg.SvgDrawing`), ``"plotly"`` (returns a
                 plotly figure for interactive viewing), ``"raytrace"`` (returns a
-                :class:`~minigeo.backends.raytrace.RaytracedImage` with light and shadows) or
-                ``"tikz"`` (returns a :class:`~minigeo.backends.tikz.TikzPicture` for LaTeX).
+                :class:`~minigeo.backends.raytrace.RaytracedImage` with light and shadows),
+                ``"mitsuba"`` (the same, rendered by Mitsuba 3) or ``"tikz"`` (returns a
+                :class:`~minigeo.backends.tikz.TikzPicture` for LaTeX).
             **options: Passed on to the backend, e.g. ``elev=20``, ``show_axes=False``.
         """
         return self._backend(backend).render(self, **options)
@@ -362,8 +364,9 @@ class Scene:
 
         Args:
             path: The file to write.
-            backend: ``"raytrace"`` to save a ray traced image instead (``.png``, ``.jpg``, ...),
-                or ``"tikz"`` for TikZ code (``.tex``) or a PDF compiled from it (``.pdf``).
+            backend: ``"raytrace"`` or ``"mitsuba"`` to save a rendered image instead (``.png``,
+                ``.jpg``, ...), or ``"tikz"`` for TikZ code (``.tex``) or a PDF compiled from it
+                (``.pdf``).
             **options: Passed on to the backend, e.g. ``elev=20`` or ``width=600``.
 
         Example:
@@ -374,11 +377,11 @@ class Scene:
         """
         path = FilePath(path)
         suffix = path.suffix.lower()
-        if backend in {"raytrace", "tikz"}:
+        if backend in {"raytrace", "tikz", "mitsuba"}:
             self.render(backend, **options).save(path)
         elif backend is not None:
             raise ValueError(
-                "save() chooses the backend from the file extension; backend can be 'raytrace' or 'tikz'."
+                "save() chooses the backend from the file extension; backend can be 'raytrace', 'mitsuba' or 'tikz'."
             )
         elif suffix in {".obj", ".stl"}:
             from .meshfiles import write_mesh

@@ -419,14 +419,19 @@ def _draw(
     canvas = _Canvas(layers, view)
     if look.outlines:
         canvas.outline(layers, look)
+    pixels = _finish(canvas, contents, background)
+    return _gray(pixels) if look.grayscale else pixels
+
+
+def _finish(canvas: _Canvas, contents: _Contents, background: str | None) -> np.ndarray:
+    """Draw lines, points and labels onto the rendered surfaces; return the final RGBA pixels."""
     for line in contents.lines:
         canvas.stroke(line)
     for marker in contents.markers:
         canvas.dot(marker)
     image = canvas.downsampled(background)
-    _draw_labels(image, contents.labels, canvas, view)
-    pixels = np.asarray(image)
-    return _gray(pixels) if look.grayscale else pixels
+    _draw_labels(image, contents.labels, canvas, canvas.view)
+    return np.asarray(image)
 
 
 def _nearest_colors(colors: np.ndarray, palette: tuple[str, ...]) -> np.ndarray:
@@ -1194,10 +1199,10 @@ class _Canvas:
     def __init__(self, layers: _Layers, view: _View):
         rows, columns = view.shape
         self.view = view
-        self.color = layers.color.reshape(rows, columns, 3)
+        self.color = layers.color.reshape(rows, columns, 3)  # premultiplied with coverage
         self.coverage = layers.coverage.reshape(rows, columns)
-        self.depth = layers.depth.reshape(rows, columns)
-        self.owner = layers.owner.reshape(rows, columns)
+        self.depth = layers.depth.reshape(rows, columns)  # of the first opaque surface, inf if none
+        self.owner = layers.owner.reshape(rows, columns)  # its scene item, -1 if none
 
     def outline(self, layers: _Layers, look: Look) -> None:
         """

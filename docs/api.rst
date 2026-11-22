@@ -152,6 +152,9 @@ Usually used through :meth:`Scene.render`, :meth:`Scene.save` and :meth:`Scene.a
 .. automodule:: minigeo.backends.raytrace
    :members: render, RaytracedImage, animate, RaytracedAnimation, Look, LOOKS
 
+.. automodule:: minigeo.backends.mitsuba
+   :members: render, LIGHTS, DEFAULT_VARIANT, linear, srgb
+
 .. automodule:: minigeo.backends.tikz
    :members: render, TikzPicture, latex_text
 

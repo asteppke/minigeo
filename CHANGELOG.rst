@@ -56,3 +56,8 @@ Version 0.6.2
 
 - Axes support for geometry objects
 - Minimal layer support for scenes
+
+Version 0.7.0
+==============
+
+- Misuba integration for rendering scenes

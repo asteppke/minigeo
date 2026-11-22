@@ -49,9 +49,9 @@ Features
   dashes, arrows and labels, with math such as ``r"$\theta = \frac{\pi}{3}$"`` in every backend;
   layers can be hidden and shown, and geometries removed.
 - **Backends**: SVG (vector drawings), TikZ (for LaTeX), matplotlib (3D axes), plotly
-  (interactive, WebGL) and a ray tracer (light, shadows, exact spheres and cylinders, and
-  looks for diagrams: cel shading, outlines, ambient occlusion), all with the same camera;
-  scenes show themselves in Jupyter.
+  (interactive, WebGL), a ray tracer (light, shadows, exact spheres and cylinders, and
+  looks for diagrams: cel shading, outlines, ambient occlusion) and, optionally, Mitsuba 3
+  (physically based), all with the same camera; scenes show themselves in Jupyter.
 
 A first scene
 -------------
@@ -248,6 +248,8 @@ For the full installation with all optional extras, use:
 
 which installs the matplotlib, svg, plotly and ray tracing backends, as well as the optional fast ray tracer with numba.
 Individual parts can be selected by specifying the desired extras instead of ``all``.
+The Mitsuba 3 backend is separate, as Mitsuba sets its variant for the whole Python process:
+``pip install "minigeo[mitsuba]"``.
 
 .. code-block:: bash
 

@@ -26,6 +26,7 @@ plotly = ["plotly>=5", "nbformat>=4.2"]  # plotly needs nbformat to show figures
 ray = ["pillow>=10.1"]  # text and image files for the ray tracer
 fast = ["numba>=0.60"]  # optional: compiled, parallel ray casting for the ray tracer
 all = ["minigeo[mpl,svg,plotly,ray,fast]"]
+mitsuba = ["mitsuba>=3.5", "pillow>=10.1"]  # optional and not in all: Mitsuba sets its variant for the whole process
 test = ["pytest", "pytest-cov", "minigeo[all]", "numba>=0.60; python_version < '3.15'"]  # tests both engines
 dev = ["minigeo[test]", "ruff"]
 

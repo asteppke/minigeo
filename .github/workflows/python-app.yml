@@ -33,6 +33,20 @@ jobs:
       - name: Test
         run: pytest --cov --cov-report=term-missing
 
+  mitsuba:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install ".[test,mitsuba]"
+      - name: Test the Mitsuba backend (and that nothing else breaks with Mitsuba installed)
+        run: pytest tests/test_backend_mitsuba.py tests/test_backend_raytrace.py -v
+
   docs:
     runs-on: ubuntu-latest
     steps:
