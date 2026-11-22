@@ -69,3 +69,8 @@ Version 0.8.0
 - Improved handling of geometry object intersections
 - Axis uses origin for placement
 - Explicit UTF-8 encoding for all text files
+
+Version 0.8.1
+==============
+
+- Minor bug fixes in matplotlib, plotly backends

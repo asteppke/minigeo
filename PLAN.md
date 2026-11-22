@@ -94,7 +94,6 @@ per point (no rings or blotches).
 - Sizes like `radius` and `size` describe a shape as created, not after scaling.
 - Anchor words always mean the local axes (`"top"` is +z′), also with `vertical_axis="x"`.
 - Run the example notebooks in CI.
-- Add `py.typed`.
 - Meshes: no STEP (needs a CAD kernel; users export STL). OBJ colors are written, not read;
   faces are triangulated as fans (fine for convex faces). Curves are sampled once; a
   `samples` change means a new `Curve`.
@@ -112,6 +111,7 @@ per point (no rings or blotches).
   (`geometry.mesh.triangulate`, `polygon_triangles`); fans remain only where they are exact
   (area vectors, volumes). The painter's sort in `depth.py` still treats faces as convex.
 - Size attributes (`size`, `radius`, `height`) describe shapes as created.
+- `py.typed` marks the package for type checkers (PEP 561).
 
 ## Open questions
 

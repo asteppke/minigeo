@@ -34,6 +34,9 @@ dev = ["minigeo[test]", "ruff"]
 Source = "https://github.com/asteppke/minigeo"
 Issues = "https://github.com/asteppke/minigeo/issues"
 
+[tool.setuptools.package-data]
+minigeo = ["py.typed"]  # PEP 561 marker: ship type information with the package
+
 [tool.setuptools_scm]
 version_scheme = "no-guess-dev"
 
