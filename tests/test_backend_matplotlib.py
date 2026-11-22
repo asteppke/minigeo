@@ -89,6 +89,36 @@ def test_releasing_the_mouse_after_rotating_resorts_the_faces(ax):
     assert [c.get_visible() for c in ax.collections] != visible_before  # other faces turn away
 
 
+def test_releasing_the_mouse_after_rotating_reshades_the_faces(ax):
+    small_scene().render(ax=ax)
+    ax.figure.canvas.draw()
+    before = [c.get_facecolor().copy() for c in ax.collections]
+
+    ax.view_init(elev=-60, azim=120)  # look from below, from the other side: the light moves too
+    x, y = ax.bbox.x0 + ax.bbox.width / 2, ax.bbox.y0 + ax.bbox.height / 2
+    release = MouseEvent("button_release_event", ax.figure.canvas, x, y)
+    ax.figure.canvas.callbacks.process("button_release_event", release)
+
+    after = [c.get_facecolor() for c in ax.collections]
+    assert any(not np.allclose(a, b) for a, b in zip(before, after, strict=True))
+
+
+def test_releasing_outside_the_axes_still_resorts_and_reshades(ax):
+    small_scene().render(ax=ax)
+    ax.figure.canvas.draw()
+    before_zorder = [c.get_zorder() for c in ax.collections]
+    before_color = [c.get_facecolor().copy() for c in ax.collections]
+
+    ax.view_init(elev=-60, azim=120)  # look from below, from the other side
+    release = MouseEvent("button_release_event", ax.figure.canvas, -50, -50)  # well outside the axes
+    assert release.inaxes is None
+    ax.figure.canvas.callbacks.process("button_release_event", release)
+
+    assert [c.get_zorder() for c in ax.collections] != before_zorder
+    after_color = [c.get_facecolor() for c in ax.collections]
+    assert any(not np.allclose(a, b) for a, b in zip(before_color, after_color, strict=True))
+
+
 def test_clean_view_without_axes(ax):
     small_scene().render(ax=ax, show_axes=False, elev=10, azim=20)
     assert not ax.axison

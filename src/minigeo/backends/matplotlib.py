@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import warnings
+import weakref
 from dataclasses import dataclass
 
 import numpy as np
@@ -23,7 +24,7 @@ from matplotlib.colors import LightSource
 from matplotlib.figure import Figure
 from matplotlib.patches import FancyArrowPatch
 from mpl_toolkits.mplot3d import proj3d
-from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
+from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection, _generate_normals, _shade_colors
 
 from ..camera import Camera
 from ..depth import is_back_face, painter_order
@@ -32,6 +33,9 @@ from ..render import Face, Label, Marker, Path, Primitive, bounds
 from ..style import color_value
 
 LINE_STYLES = {"solid": "-", "dashed": "--", "dotted": ":"}
+
+#: The Measurer currently attached to each axes, so a new one can detach it (see Measurer.__init__).
+_measurers: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
 def render(
@@ -122,6 +126,9 @@ class Measurer:
     ON_TOP = 10**7
 
     def __init__(self, ax, spots: list[Spot], *, digits: int = 3, radius: float = 10):
+        previous = _measurers.get(ax)
+        if previous is not None:
+            previous.disconnect()  # a Measurer already on this axes would double-pick otherwise
         self.ax = ax
         self.spots = spots
         self.measurement = Measurement(digits)
@@ -148,9 +155,31 @@ class Measurer:
         self.hover_info = ax.text2D(0.01, 0.01, "", va="bottom", **text)
         self.hover_info.set_visible(False)
         canvas = ax.figure.canvas
-        canvas.mpl_connect("button_press_event", self._on_press)
-        canvas.mpl_connect("button_release_event", self._on_release)
-        canvas.mpl_connect("motion_notify_event", self._on_motion)
+        self._cids = [
+            canvas.mpl_connect("button_press_event", self._on_press),
+            canvas.mpl_connect("button_release_event", self._on_release),
+            canvas.mpl_connect("motion_notify_event", self._on_motion),
+        ]
+        _measurers[ax] = self
+
+    def disconnect(self) -> None:
+        """
+        Stop reacting to mouse events and remove the drawn anchors, picks and info boxes.
+
+        Called automatically when a new :class:`Measurer` is attached to the same axes
+        (e.g. a second ``scene.measure(ax=ax)``), so the old one doesn't keep picking too.
+        """
+        canvas = self.ax.figure.canvas
+        for cid in self._cids:
+            canvas.mpl_disconnect(cid)
+        self._cids = []
+        for artist in [*self._pick_artists, *self._hover_artists, self.info, self.hover_info]:
+            artist.remove()
+        self._pick_artists = []
+        self._hover_artists = []
+        if hasattr(self, "dots"):
+            self.dots.remove()
+            del self.dots
 
     @property
     def figure(self):
@@ -397,8 +426,10 @@ class DepthSorter:
         self.vertical_axis = vertical_axis
 
     def sort(self) -> None:
-        """Set the drawing order and hide opaque back faces, for the axes' current angles."""
-        toward_viewer = Camera(self.ax.elev, self.ax.azim, self.vertical_axis).toward_viewer
+        """Set the drawing order, hide opaque back faces and reshade faces, for the current angles."""
+        camera = Camera(self.ax.elev, self.ax.azim, self.vertical_axis)
+        toward_viewer = camera.toward_viewer
+        light = _light_source(camera)
         for rank, index in enumerate(painter_order(self.primitives, toward_viewer)):
             primitive = self.primitives[index]
             hidden = (
@@ -410,15 +441,22 @@ class DepthSorter:
             for artist in self.artists[index]:
                 artist.set_zorder(rank + 1)
                 artist.set_visible(not hidden)
+            if isinstance(primitive, Face) and primitive.style.fill != "none":
+                # the light is fixed in world space from the view at render time, so after a
+                # rotation it no longer comes from behind the viewer unless recomputed here
+                normals = _generate_normals([primitive.points])
+                facecolor = _shade_colors(color_value(primitive.style.fill), normals, light)
+                self.artists[index][0].set_facecolor(facecolor)
 
     def connect(self) -> None:
         """Re-sort after the user rotates the view with the mouse."""
         canvas = self.ax.figure.canvas
 
         def on_release(event):
-            if event.inaxes is self.ax:
-                self.sort()
-                canvas.draw_idle()
+            # not gated on event.inaxes: a drag that ends outside the axes still rotated the
+            # view, and would otherwise leave the zorder and shading stale
+            self.sort()
+            canvas.draw_idle()
 
         canvas.mpl_connect("button_release_event", on_release)
 

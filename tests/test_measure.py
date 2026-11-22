@@ -184,6 +184,24 @@ def test_releasing_outside_the_canvas_does_not_crash(tool):
     assert tool.measurement.picks == []
 
 
+def test_measuring_the_same_axes_again_detaches_the_old_measurer(tool):
+    old_dots, old_info, old_hover_info = tool.dots, tool.info, tool.hover_info
+
+    scene = Scene()
+    scene.add(Box([0, 0, 0], size=1), fill="C0", label="cube")
+    new_tool = scene.measure(ax=tool.ax)
+
+    assert new_tool is not tool
+    assert tool._cids == []  # the old handlers were disconnected
+    assert old_dots not in tool.ax.collections  # the old artists were removed, not left piling up
+    assert old_info not in tool.ax.texts
+    assert old_hover_info not in tool.ax.texts
+
+    click(new_tool, "cube: top")
+    assert tool.measurement.picks == []  # the detached old tool no longer reacts to clicks
+    assert [s.name for s in new_tool.measurement.picks] == ["cube: top"]
+
+
 def test_picking_from_code(tool):
     tool.pick("cube: top")
     tool.pick("cube: bottom")
