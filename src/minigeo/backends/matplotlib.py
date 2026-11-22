@@ -474,9 +474,9 @@ def to_figure(scene, *, size: float = 5, **options) -> Figure:
 def to_png(scene, *, size: float = 5, dpi: int = 100, **options) -> bytes:
     """Render ``scene`` into PNG bytes, without pyplot (used for display in Jupyter)."""
     figure = to_figure(scene, size=size, **options)
-    buffer = io.BytesIO()
-    figure.savefig(buffer, format="png", dpi=dpi)
-    return buffer.getvalue()
+    with io.BytesIO() as buffer:
+        figure.savefig(buffer, format="png", dpi=dpi)
+        return buffer.getvalue()
 
 
 # ---------------------------------------------------------------- one function per primitive

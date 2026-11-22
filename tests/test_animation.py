@@ -74,6 +74,17 @@ def test_plotly_animation_has_frames_controls_and_a_fixed_view():
     assert figure.layout.uirevision  # keeps the user's camera while playing
 
 
+def test_plotly_animation_does_not_redraw_the_whole_layout_each_frame():
+    scene, box = turning_box()
+    figure = scene.animate(turn(box), frames=4, interval=80)
+    play, pause = figure.layout.updatemenus[0].buttons
+    step = figure.layout.sliders[0].steps[0]
+    # the view is fixed (checked above), so only trace data should update, not the full layout
+    assert play.args[1]["frame"]["redraw"] is False
+    assert pause.args[1]["frame"]["redraw"] is False
+    assert step.args[1]["frame"]["redraw"] is False
+
+
 def test_plotly_view_covers_all_frames():
     scene = Scene()
     box = scene.add(Box([0, 0, 0], size=[1, 1, 1]))

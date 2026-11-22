@@ -129,6 +129,22 @@ def test_png():
     assert to_png(small_scene(), size=2, dpi=50).startswith(b"\x89PNG")
 
 
+def test_png_closes_its_buffer(monkeypatch):
+    from minigeo.backends import matplotlib as mpl_backend
+
+    created = []
+    real_bytesio = mpl_backend.io.BytesIO
+
+    class TrackingBytesIO(real_bytesio):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            created.append(self)
+
+    monkeypatch.setattr(mpl_backend.io, "BytesIO", TrackingBytesIO)
+    to_png(small_scene(), size=2, dpi=50)
+    assert created and created[0].closed
+
+
 @pytest.mark.parametrize("vertical", ["x", "y", "z"])
 def test_equal_scale_for_every_vertical_axis(ax, vertical):
     from mpl_toolkits.mplot3d import proj3d

@@ -97,12 +97,14 @@ def animate(
         )
 
     names = [str(i) for i in range(len(snapshots))]
+    # redraw=False: the axes, camera and trace count/order are fixed across frames (checked
+    # above), so only the data needs updating; a full layout redraw per frame is needless.
     play = {
-        "frame": {"duration": interval, "redraw": True},
+        "frame": {"duration": interval, "redraw": False},
         "transition": {"duration": 0},
         "fromcurrent": True,
     }
-    still = {"frame": {"duration": 0, "redraw": True}, "mode": "immediate", "transition": {"duration": 0}}
+    still = {"frame": {"duration": 0, "redraw": False}, "mode": "immediate", "transition": {"duration": 0}}
     figure = go.Figure(
         data=frame_traces[0],
         frames=[go.Frame(data=traces, name=name) for traces, name in zip(frame_traces, names, strict=True)],
@@ -221,12 +223,14 @@ def face_traces(faces: list[Face]) -> list[go.Mesh3d]:
     traces = []
     for opacity, group in by_opacity.items():
         points, triangles, colors = [], [], []
+        offset = 0
         for face in group:
-            first = sum(len(p) for p in points)
             points.append(face.points)
+            color = color_value(face.style.fill)
             for triangle in polygon_triangles(face.points):
-                triangles.append(tuple(first + triangle))
-                colors.append(color_value(face.style.fill))
+                triangles.append(tuple(offset + triangle))
+                colors.append(color)
+            offset += len(face.points)
         x, y, z = np.vstack(points).T
         i, j, k = np.array(triangles).T
         traces.append(
