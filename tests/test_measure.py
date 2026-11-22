@@ -175,6 +175,15 @@ def test_dragging_turns_the_view_without_picking(tool):
     assert tool.measurement.picks == []
 
 
+def test_releasing_outside_the_canvas_does_not_crash(tool):
+    from matplotlib.backend_bases import MouseEvent
+
+    mouse(tool, "button_press_event", "cube: top")
+    release = MouseEvent("button_release_event", tool.figure.canvas, None, None, button=1)
+    release._process()  # matplotlib sets x/y to None when the release is outside the canvas
+    assert tool.measurement.picks == []
+
+
 def test_picking_from_code(tool):
     tool.pick("cube: top")
     tool.pick("cube: bottom")

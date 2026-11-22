@@ -191,7 +191,9 @@ class Measurer:
 
     def _on_release(self, event) -> None:
         press, self._press = self._press, None
-        if press is None or event.button != 1 or np.hypot(event.x - press[0], event.y - press[1]) > 3:
+        if press is None or event.button != 1 or event.x is None:
+            return  # not a click: the view was turned, or release was outside the canvas
+        if np.hypot(event.x - press[0], event.y - press[1]) > 3:
             return  # not a click: the view was turned
         spot = self.spot_at(event.x, event.y)
         if spot is not None:
